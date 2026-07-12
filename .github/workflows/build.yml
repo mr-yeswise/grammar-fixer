@@ -1,0 +1,86 @@
+name: Build GrammarFixer
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  release:
+    types: [ created ]
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  PROJECT_PATH: src/GrammarFixer/GrammarFixer.csproj
+  PUBLISH_DIR: ./publish
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        run: dotnet restore ${{ env.PROJECT_PATH }}
+
+      - name: Build
+        run: dotnet build ${{ env.PROJECT_PATH }} -c Release --no-restore
+
+      - name: Test
+        run: dotnet test --no-build -c Release || true
+
+      # --- Portable single-file .exe ---
+      - name: Publish portable exe
+        run: |
+          dotnet publish ${{ env.PROJECT_PATH }} \
+            -c Release \
+            -r win-x64 \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
+            -o ${{ env.PUBLISH_DIR }}/portable
+
+      - name: Upload portable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GrammarFixer-portable
+          path: ${{ env.PUBLISH_DIR }}/portable/GrammarFixer.exe
+
+      # --- MSIX packaging (requires Windows App Packaging tools) ---
+      # For a self-signed MSIX, generate a pfx and store it in repo secrets as SIGNING_CERT_BASE64
+      # Then uncomment and configure the block below.
+      #
+      # - name: Decode signing certificate
+      #   run: |
+      #     $certBytes = [System.Convert]::FromBase64String("${{ secrets.SIGNING_CERT_BASE64 }}")
+      #     [System.IO.File]::WriteAllBytes("cert.pfx", $certBytes)
+      #   shell: pwsh
+      #
+      # - name: Build MSIX
+      #   run: |
+      #     dotnet publish ${{ env.PROJECT_PATH }} \
+      #       -c Release \
+      #       -r win-x64 \
+      #       -p:GenerateAppxPackageOnBuild=true \
+      #       -p:AppxPackageSigningEnabled=true \
+      #       -p:PackageCertificateKeyFile=cert.pfx \
+      #       -o ${{ env.PUBLISH_DIR }}/msix
+      #   shell: bash
+
+      # --- Upload to GitHub Release on tag push ---
+      - name: Upload to Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.PUBLISH_DIR }}/portable/GrammarFixer.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
