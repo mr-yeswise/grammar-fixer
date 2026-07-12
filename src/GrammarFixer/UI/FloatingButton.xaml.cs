@@ -2,6 +2,8 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using WpfPoint = System.Windows.Point;
+using WpfMouseEventArgs = System.Windows.Input.MouseEventArgs;
 using GrammarFixer.Core;
 
 namespace GrammarFixer.UI;
@@ -22,7 +24,6 @@ public partial class FloatingButton : Window
         InitializeComponent();
         _controller = controller;
 
-        // Auto-hide after 4 seconds unless hovered
         _hideTimer = new System.Windows.Threading.DispatcherTimer
         {
             Interval = TimeSpan.FromSeconds(4)
@@ -34,19 +35,19 @@ public partial class FloatingButton : Window
     }
 
     /// <summary>Show the pill at a screen position (near caret).</summary>
-    public void ShowAt(Point screenPos)
+    public void ShowAt(WpfPoint screenPos)
     {
-        // Offset slightly below-right of caret
         Left = screenPos.X + 4;
-        Top = screenPos.Y + 6;
+        Top  = screenPos.Y + 6;
 
-        // Clamp to working area
         var wa = SystemParameters.WorkArea;
-        if (Left + 80 > wa.Right) Left = wa.Right - 84;
-        if (Top + 40 > wa.Bottom) Top = screenPos.Y - 38;
+        if (Left + 80  > wa.Right)  Left = wa.Right  - 84;
+        if (Left       < wa.Left)   Left = wa.Left   + 4;
+        if (Top  + 40  > wa.Bottom) Top  = screenPos.Y - 38;
+        if (Top        < wa.Top)    Top  = wa.Top    + 4;
 
         Opacity = 0;
-        Show();
+        if (!IsVisible) Show();
         FadeIn();
 
         _hideTimer.Stop();
@@ -83,14 +84,14 @@ public partial class FloatingButton : Window
         _controller.TriggerFromFloatingButton();
     }
 
-    private void Pill_MouseEnter(object sender, MouseEventArgs e)
+    private void Pill_MouseEnter(object sender, WpfMouseEventArgs e)
     {
         _isHovered = true;
         _hideTimer.Stop();
         PillBorder.Background = new SolidColorBrush(Color.FromRgb(72, 63, 200));
     }
 
-    private void Pill_MouseLeave(object sender, MouseEventArgs e)
+    private void Pill_MouseLeave(object sender, WpfMouseEventArgs e)
     {
         _isHovered = false;
         PillBorder.Background = new SolidColorBrush(Color.FromRgb(91, 79, 232));

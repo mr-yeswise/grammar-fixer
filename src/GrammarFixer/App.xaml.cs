@@ -1,11 +1,12 @@
 using System.Windows;
+using WpfApp = System.Windows.Application;
 using GrammarFixer.Core;
 using GrammarFixer.Services;
 using GrammarFixer.UI;
 
 namespace GrammarFixer;
 
-public partial class App : Application
+public partial class App : WpfApp
 {
     private AppController? _controller;
     private TrayIconManager? _trayIcon;
