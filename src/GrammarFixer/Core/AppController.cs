@@ -1,4 +1,4 @@
-using System.Windows;
+using System.Windows.Input;
 using GrammarFixer.Models;
 using GrammarFixer.Services;
 using GrammarFixer.UI;
@@ -12,7 +12,7 @@ namespace GrammarFixer.Core;
 ///   -> debounce 400ms
 ///   -> read focused text via UIA
 ///   -> CorrectionPipeline corrects
-///   -> show FloatingButton pill near caret  (always)
+///   -> show FloatingButton pill near caret
 ///   -> on pill click OR Ctrl+Alt+G: apply correction or show overlay
 /// </summary>
 public sealed class AppController : IDisposable
@@ -25,11 +25,9 @@ public sealed class AppController : IDisposable
     private FloatingButton? _floatingBtn;
     private bool _disposed;
 
-    // Last captured text for the floating button click path
     private string? _lastCapturedText;
-    private GrammarFixer.Models.CorrectionResult? _lastResult;
+    private CorrectionResult? _lastResult;
 
-    // Debounce timer for typing detection (separate from pipeline debounce)
     private readonly System.Timers.Timer _typingDebounce;
 
     public AppSettings Settings => _settings;
@@ -40,11 +38,9 @@ public sealed class AppController : IDisposable
         _pipeline = new CorrectionPipeline(settings);
         _pipeline.CorrectionReady += OnCorrectionReady;
 
-        // Global hotkey Ctrl+Alt+G
         _hotkey = new HotkeyManager(settings.HotkeyTrigger);
         _hotkey.HotkeyPressed += OnHotkeyPressed;
 
-        // Typing hook for floating button trigger
         _typingHook = new KeyboardHook();
         _typingHook.KeyDown += OnTypingKeyDown;
 
@@ -57,8 +53,7 @@ public sealed class AppController : IDisposable
         _hotkey.Start();
         _typingHook.Install();
 
-        // Create floating button on UI thread
-        Application.Current.Dispatcher.Invoke(() =>
+        WpfApp.Current.Dispatcher.Invoke(() =>
         {
             _floatingBtn = new FloatingButton(this);
         });
@@ -69,7 +64,7 @@ public sealed class AppController : IDisposable
         _hotkey.Stop();
         _typingHook.Uninstall();
         _typingDebounce.Stop();
-        Application.Current.Dispatcher.Invoke(() =>
+        WpfApp.Current.Dispatcher.Invoke(() =>
         {
             _overlay?.Close();
             _floatingBtn?.Close();
@@ -86,19 +81,18 @@ public sealed class AppController : IDisposable
 
     public void OpenSettings()
     {
-        Application.Current.Dispatcher.Invoke(() =>
+        WpfApp.Current.Dispatcher.Invoke(() =>
         {
             var win = new SettingsWindow(this);
             win.Show();
         });
     }
 
-    // Called when user clicks the floating pill button
     public void TriggerFromFloatingButton()
     {
         if (_lastResult != null)
         {
-            Application.Current.Dispatcher.Invoke(() =>
+            WpfApp.Current.Dispatcher.Invoke(() =>
             {
                 if (_settings.UxMode == UxMode.OneClickRewrite)
                     UiaHelper.SetFocusedText(_lastResult.Corrected);
@@ -108,13 +102,12 @@ public sealed class AppController : IDisposable
         }
         else if (_lastCapturedText != null)
         {
-            // Result not ready yet — run synchronously
             _ = Task.Run(async () =>
             {
                 var result = await _pipeline.CorrectNowAsync(_lastCapturedText);
                 if (result == null || result.Corrected == result.Original) return;
                 _lastResult = result;
-                Application.Current.Dispatcher.Invoke(() =>
+                WpfApp.Current.Dispatcher.Invoke(() =>
                 {
                     if (_settings.UxMode == UxMode.OneClickRewrite)
                         UiaHelper.SetFocusedText(result.Corrected);
@@ -125,7 +118,6 @@ public sealed class AppController : IDisposable
         }
     }
 
-    // Ctrl+Alt+G hotkey path
     private async void OnHotkeyPressed()
     {
         if (!_settings.Enabled) return;
@@ -138,7 +130,7 @@ public sealed class AppController : IDisposable
         var result = await _pipeline.CorrectNowAsync(text);
         if (result == null || result.Corrected == result.Original) return;
 
-        Application.Current.Dispatcher.Invoke(() =>
+        WpfApp.Current.Dispatcher.Invoke(() =>
         {
             if (_settings.UxMode == UxMode.OneClickRewrite)
                 UiaHelper.SetFocusedText(result.Corrected);
@@ -147,78 +139,66 @@ public sealed class AppController : IDisposable
         });
     }
 
-    // Fires on every keypress — resets debounce
-    private void OnTypingKeyDown(System.Windows.Input.Key key)
+    private void OnTypingKeyDown(Key key)
     {
         if (!_settings.Enabled) return;
         if (_settings.HotkeyOnlyMode) return;
 
-        // Ignore modifier-only keys
-        if (key == System.Windows.Input.Key.LeftCtrl ||
-            key == System.Windows.Input.Key.RightCtrl ||
-            key == System.Windows.Input.Key.LeftAlt ||
-            key == System.Windows.Input.Key.RightAlt ||
-            key == System.Windows.Input.Key.LeftShift ||
-            key == System.Windows.Input.Key.RightShift ||
-            key == System.Windows.Input.Key.LWin ||
-            key == System.Windows.Input.Key.RWin) return;
+        if (key == Key.LeftCtrl  || key == Key.RightCtrl  ||
+            key == Key.LeftAlt   || key == Key.RightAlt   ||
+            key == Key.LeftShift || key == Key.RightShift ||
+            key == Key.LWin      || key == Key.RWin) return;
 
         _typingDebounce.Stop();
         _typingDebounce.Start();
     }
 
-    // Fires 400ms after last keypress
     private async Task OnTypingPaused()
     {
         if (!_settings.Enabled) return;
 
         string? processName = null;
-        string? text = null;
-        System.Windows.Point caretPos = default;
+        string? text        = null;
+        WpfPoint caretPos   = default;
 
-        // Must read UIA on the UI thread
-        await Application.Current.Dispatcher.InvokeAsync(() =>
+        await WpfApp.Current.Dispatcher.InvokeAsync(() =>
         {
             processName = UiaHelper.GetForegroundProcessName();
             if (!IsAppAllowed(processName)) return;
-            text = UiaHelper.GetFocusedText();
-            caretPos = UiaHelper.GetCaretScreenPosition();
+            text      = UiaHelper.GetFocusedText();
+            caretPos  = UiaHelper.GetCaretScreenPosition();
         });
 
         if (string.IsNullOrWhiteSpace(text)) return;
         if (!IsAppAllowed(processName)) return;
 
-        // Store for floating button click
         _lastCapturedText = text;
-        _lastResult = null;
+        _lastResult       = null;
 
-        // Pre-warm the correction in background
         var result = await _pipeline.CorrectNowAsync(text);
         if (result != null && result.Corrected != result.Original)
         {
             _lastResult = result;
-            // Show the floating pill
-            Application.Current.Dispatcher.Invoke(() =>
+            WpfApp.Current.Dispatcher.Invoke(() =>
             {
                 _floatingBtn?.ShowAt(caretPos);
             });
         }
     }
 
-    // Fired by CorrectionPipeline debounce path (review mode)
-    private void OnCorrectionReady(GrammarFixer.Models.CorrectionResult result)
+    private void OnCorrectionReady(CorrectionResult result)
     {
         if (!_settings.Enabled) return;
         if (result.Corrected == result.Original) return;
         _lastResult = result;
-        Application.Current.Dispatcher.Invoke(() =>
+        WpfApp.Current.Dispatcher.Invoke(() =>
         {
             var pos = UiaHelper.GetCaretScreenPosition();
             _floatingBtn?.ShowAt(pos);
         });
     }
 
-    private void ShowOverlay(GrammarFixer.Models.CorrectionResult result)
+    private void ShowOverlay(CorrectionResult result)
     {
         _overlay?.Close();
         var pos = UiaHelper.GetCaretScreenPosition();
@@ -226,7 +206,7 @@ public sealed class AppController : IDisposable
         _overlay.Show();
     }
 
-    public void ApplyCorrection(GrammarFixer.Models.CorrectionResult result)
+    public void ApplyCorrection(CorrectionResult result)
     {
         UiaHelper.SetFocusedText(result.Corrected);
         _overlay?.Close();

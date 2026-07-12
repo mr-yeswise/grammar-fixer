@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Media.Imaging;
 using Hardcodet.Wpf.TaskbarNotification;
 using GrammarFixer.Core;
 using GrammarFixer.Models;
@@ -6,8 +7,8 @@ using GrammarFixer.Models;
 namespace GrammarFixer.UI;
 
 /// <summary>
-/// Manages the system tray icon using Hardcodet.NotifyIcon.Wpf.
-/// Provides: enable/disable toggle, mode switch, settings, quit.
+/// System tray icon — enable/disable toggle, mode switch, settings, quit.
+/// Uses Hardcodet.NotifyIcon.Wpf.
 /// </summary>
 public sealed class TrayIconManager : IDisposable
 {
@@ -62,15 +63,13 @@ public sealed class TrayIconManager : IDisposable
         var settingsItem = new System.Windows.Controls.MenuItem { Header = "Settings..." };
         settingsItem.Click += (_, _) => _controller.OpenSettings();
 
-        var separator = new System.Windows.Controls.Separator();
-
         var quitItem = new System.Windows.Controls.MenuItem { Header = "Quit" };
-        quitItem.Click += (_, _) => Application.Current.Shutdown();
+        quitItem.Click += (_, _) => WpfApp.Current.Shutdown();
 
         menu.Items.Add(toggleItem);
         menu.Items.Add(modeItem);
         menu.Items.Add(settingsItem);
-        menu.Items.Add(separator);
+        menu.Items.Add(new System.Windows.Controls.Separator());
         menu.Items.Add(quitItem);
 
         return menu;
@@ -79,14 +78,14 @@ public sealed class TrayIconManager : IDisposable
     private void UpdateIcon(bool enabled)
     {
         if (_trayIcon == null) return;
-        _trayIcon.IconSource = LoadIcon(enabled ? "tray_enabled.ico" : "tray_disabled.ico");
+        _trayIcon.IconSource  = LoadIcon(enabled ? "tray_enabled.ico" : "tray_disabled.ico");
         _trayIcon.ToolTipText = enabled ? "GrammarFixer (Active)" : "GrammarFixer (Disabled)";
     }
 
-    private static System.Windows.Media.Imaging.BitmapImage LoadIcon(string name)
+    private static BitmapImage LoadIcon(string name)
     {
         var uri = new Uri($"pack://application:,,,/Assets/{name}", UriKind.Absolute);
-        return new System.Windows.Media.Imaging.BitmapImage(uri);
+        return new BitmapImage(uri);
     }
 
     public void Dispose() => _trayIcon?.Dispose();

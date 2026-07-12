@@ -1,7 +1,6 @@
 using System.Windows;
 using System.Windows.Documents;
 using System.Windows.Media;
-using WpfPoint = System.Windows.Point;
 using DiffPlex;
 using DiffPlex.DiffBuilder;
 using DiffPlex.DiffBuilder.Model;
@@ -11,8 +10,7 @@ using GrammarFixer.Models;
 namespace GrammarFixer.UI;
 
 /// <summary>
-/// Always-on-top borderless WPF suggestion overlay.
-/// Uses DiffPlex for word-level diff rendering.
+/// Always-on-top borderless WPF suggestion overlay with DiffPlex word diff.
 /// </summary>
 public partial class OverlayWindow : Window
 {
@@ -22,25 +20,25 @@ public partial class OverlayWindow : Window
     public OverlayWindow(CorrectionResult result, WpfPoint caretPos, AppController controller)
     {
         InitializeComponent();
-        _result = result;
+        _result     = result;
         _controller = controller;
 
         Left = caretPos.X;
         Top  = caretPos.Y;
 
-        var screen = SystemParameters.WorkArea;
-        if (Left + 460 > screen.Right)  Left = screen.Right  - 464;
-        if (Left       < screen.Left)   Left = screen.Left   + 4;
-        if (Top  + 160 > screen.Bottom) Top  = caretPos.Y   - 168;
-        if (Top        < screen.Top)    Top  = screen.Top    + 4;
+        var wa = SystemParameters.WorkArea;
+        if (Left + 460 > wa.Right)  Left = wa.Right  - 464;
+        if (Left       < wa.Left)   Left = wa.Left   + 4;
+        if (Top  + 160 > wa.Bottom) Top  = caretPos.Y - 168;
+        if (Top        < wa.Top)    Top  = wa.Top    + 4;
 
         RenderDiff(result.Original, result.Corrected);
     }
 
     private void RenderDiff(string original, string corrected)
     {
-        var differ = new InlineDiffBuilder(new Differ());
-        var diff   = differ.BuildDiffModel(original, corrected, ignoreWhitespace: false);
+        var diff = new InlineDiffBuilder(new Differ())
+            .BuildDiffModel(original, corrected, ignoreWhitespace: false);
 
         var doc  = new FlowDocument { FontSize = 13, PageWidth = 400 };
         var para = new Paragraph   { LineHeight = 20 };
@@ -52,8 +50,8 @@ public partial class OverlayWindow : Window
                 case ChangeType.Inserted:
                     para.Inlines.Add(new Run(" " + line.Text + " ")
                     {
-                        Background = new SolidColorBrush(Color.FromRgb(198, 239, 206)),
-                        Foreground = new SolidColorBrush(Color.FromRgb(0,   97,   0)),
+                        Background = new SolidColorBrush(WpfColor.FromRgb(198, 239, 206)),
+                        Foreground = new SolidColorBrush(WpfColor.FromRgb(0,    97,   0)),
                         FontWeight = FontWeights.SemiBold
                     });
                     break;
@@ -61,8 +59,8 @@ public partial class OverlayWindow : Window
                 case ChangeType.Deleted:
                     para.Inlines.Add(new Run(" " + line.Text + " ")
                     {
-                        Background  = new SolidColorBrush(Color.FromRgb(255, 199, 206)),
-                        Foreground  = new SolidColorBrush(Color.FromRgb(156,   0,   6)),
+                        Background      = new SolidColorBrush(WpfColor.FromRgb(255, 199, 206)),
+                        Foreground      = new SolidColorBrush(WpfColor.FromRgb(156,   0,   6)),
                         TextDecorations = TextDecorations.Strikethrough
                     });
                     break;
