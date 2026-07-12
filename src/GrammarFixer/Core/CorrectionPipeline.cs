@@ -1,3 +1,4 @@
+using System.IO;
 using GrammarFixer.Models;
 using GrammarFixer.Services;
 
@@ -24,8 +25,9 @@ public sealed class CorrectionPipeline : IDisposable
         _settings = settings;
         _staticEngine = new StaticCorrectionEngine();
 
+        // AppContext.BaseDirectory is correct for single-file published apps
         var typosPath = Path.Combine(
-            AppDomain.CurrentDomain.BaseDirectory, "Data", "typos_en.json");
+            AppContext.BaseDirectory, "Data", "typos_en.json");
         _staticEngine.LoadDictionary(typosPath);
 
         _debounce = new System.Timers.Timer(settings.DebounceMs) { AutoReset = false };
@@ -76,7 +78,6 @@ public sealed class CorrectionPipeline : IDisposable
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
 
-        // Cache hit
         if (_cache.TryGet(text, out var cached))
             return cached with { FromCache = true };
 
@@ -91,8 +92,6 @@ public sealed class CorrectionPipeline : IDisposable
             _cts.Cancel();
             _cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
             result = await _groqClient.CorrectAsync(text, _cts.Token);
-
-            // If Groq fails, fall back to static
             result ??= _staticEngine.Correct(text);
         }
 

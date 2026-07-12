@@ -4,6 +4,9 @@ namespace GrammarFixer.Services;
 
 /// <summary>
 /// Manages autostart via HKCU Run key — no admin rights required.
+/// Uses Environment.ProcessPath (correct for single-file publish).
+/// AppContext.BaseDirectory is the fallback — never Assembly.Location
+/// which returns empty string in single-file apps (IL3000).
 /// </summary>
 public static class AutostartHelper
 {
@@ -14,7 +17,11 @@ public static class AutostartHelper
     {
         using var key = Registry.CurrentUser.OpenSubKey(RunKey, writable: true);
         if (key == null) return;
-        var exePath = Environment.ProcessPath ?? System.Reflection.Assembly.GetExecutingAssembly().Location;
+
+        // Environment.ProcessPath is the reliable path for single-file published apps
+        var exePath = Environment.ProcessPath
+            ?? System.IO.Path.Combine(AppContext.BaseDirectory, "GrammarFixer.exe");
+
         key.SetValue(AppName, $"\"{exePath}\"");
     }
 

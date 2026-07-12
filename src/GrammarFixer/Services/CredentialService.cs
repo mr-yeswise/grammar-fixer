@@ -1,3 +1,4 @@
+using System.Net;
 using AdysTech.CredentialManager;
 
 namespace GrammarFixer.Services;
@@ -6,6 +7,7 @@ namespace GrammarFixer.Services;
 /// Stores/retrieves the Groq API key via Windows Credential Manager (DPAPI).
 /// Key is never written to disk in plaintext.
 /// Reference: https://github.com/AdysTech/CredentialManager
+/// NetworkCredential lives in System.Net (no extra NuGet needed on .NET 8).
 /// </summary>
 public static class CredentialService
 {
@@ -13,7 +15,8 @@ public static class CredentialService
 
     public static void SaveApiKey(string apiKey)
     {
-        var cred = new NetworkCredential(TargetName, apiKey);
+        // Username field is unused; we store the key in the Password slot.
+        var cred = new NetworkCredential("grammerfixer_user", apiKey);
         CredentialManager.SaveCredentials(TargetName, cred);
     }
 
