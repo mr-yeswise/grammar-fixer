@@ -1,5 +1,4 @@
 using System.Windows;
-using WpfApp = System.Windows.Application;
 using GrammarFixer.Core;
 using GrammarFixer.Services;
 using GrammarFixer.UI;
