@@ -1,0 +1,28 @@
+# Build outputs
+bin/
+obj/
+publish/
+*.user
+*.suo
+.vs/
+
+# Settings with secrets
+# (API key is in Credential Manager, not here)
+src/GrammarFixer/appsettings.local.json
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Rider / VS
+.idea/
+*.DotSettings.user
+
+# NuGet
+*.nupkg
+packages/
+
+# Single-file publish output
+*.exe
+!src/**/*.exe
