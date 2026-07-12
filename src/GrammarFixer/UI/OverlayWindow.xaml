@@ -11,39 +11,59 @@
         SizeToContent="WidthAndHeight"
         Focusable="False"
         IsHitTestVisible="True">
-  <Border Background="#F0FFFFFF"
-          BorderBrush="#CCCCCC"
+  <Window.Resources>
+    <DropShadowEffect x:Key="ShadowEffect"
+                      BlurRadius="10"
+                      ShadowDepth="3"
+                      Opacity="0.3"
+                      Color="Black"/>
+  </Window.Resources>
+  <Border Background="#F8F8FF"
+          BorderBrush="#DDDDEE"
           BorderThickness="1"
-          CornerRadius="8"
-          Padding="10,8"
+          CornerRadius="10"
+          Padding="12,10"
           Effect="{StaticResource ShadowEffect}">
-    <StackPanel>
+    <StackPanel MinWidth="200" MaxWidth="440">
+      <!-- Header -->
+      <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+        <TextBlock Text="&#10024; GrammarFixer"
+                   FontSize="12"
+                   FontWeight="SemiBold"
+                   Foreground="#5B4FE8"
+                   VerticalAlignment="Center"/>
+      </StackPanel>
+
       <!-- Diff area -->
-      <TextBlock x:Name="DiffTextBlock"
-                 FontSize="13"
-                 TextWrapping="Wrap"
-                 MaxWidth="420"
-                 Margin="0,0,0,8"/>
+      <Border Background="#F0F0FF" CornerRadius="6" Padding="8,6" Margin="0,0,0,10">
+        <RichTextBox x:Name="DiffBox"
+                     IsReadOnly="True"
+                     BorderThickness="0"
+                     Background="Transparent"
+                     FontSize="13"
+                     MaxHeight="120"
+                     VerticalScrollBarVisibility="Auto"/>
+      </Border>
 
       <!-- Action chips -->
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
         <Button x:Name="AcceptAllBtn"
-                Content="✓ Accept all"
+                Content="&#10003; Accept all"
                 Click="AcceptAll_Click"
-                Margin="0,0,6,0"
-                Padding="8,4"
+                Margin="0,0,8,0"
+                Padding="10,5"
                 FontSize="12"
-                Background="#2ECC71"
+                Background="#5B4FE8"
                 Foreground="White"
                 BorderThickness="0"
                 Cursor="Hand"/>
         <Button x:Name="DismissBtn"
-                Content="× Dismiss"
+                Content="&#215; Dismiss"
                 Click="Dismiss_Click"
-                Padding="8,4"
+                Padding="10,5"
                 FontSize="12"
-                Background="#E74C3C"
-                Foreground="White"
+                Background="#EEEEEE"
+                Foreground="#333333"
                 BorderThickness="0"
                 Cursor="Hand"/>
       </StackPanel>

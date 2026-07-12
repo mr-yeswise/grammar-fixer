@@ -10,9 +10,9 @@ using GrammarFixer.Models;
 namespace GrammarFixer.UI;
 
 /// <summary>
-/// Always-on-top borderless WPF overlay that appears near the caret.
+/// Always-on-top borderless WPF suggestion overlay.
 /// Uses DiffPlex for word-level diff rendering.
-/// Positioned via UiaHelper.GetCaretScreenPosition().
+/// Appears near caret via UiaHelper.GetCaretScreenPosition().
 /// </summary>
 public partial class OverlayWindow : Window
 {
@@ -28,10 +28,12 @@ public partial class OverlayWindow : Window
         Left = caretPos.X;
         Top = caretPos.Y;
 
-        // Clamp to screen bounds
+        // Clamp to screen working area
         var screen = SystemParameters.WorkArea;
-        if (Left + 450 > screen.Right) Left = screen.Right - 450;
-        if (Top + 120 > screen.Bottom) Top = caretPos.Y - 130;
+        if (Left + 460 > screen.Right) Left = screen.Right - 464;
+        if (Left < screen.Left) Left = screen.Left + 4;
+        if (Top + 160 > screen.Bottom) Top = caretPos.Y - 168;
+        if (Top < screen.Top) Top = screen.Top + 4;
 
         RenderDiff(result.Original, result.Corrected);
     }
@@ -41,26 +43,27 @@ public partial class OverlayWindow : Window
         var differ = new InlineDiffBuilder(new Differ());
         var diff = differ.BuildDiffModel(original, corrected, ignoreWhitespace: false);
 
-        var para = new Paragraph();
-        para.LineHeight = 18;
+        var doc = new FlowDocument { FontSize = 13, PageWidth = 400 };
+        var para = new Paragraph { LineHeight = 20 };
 
         foreach (var line in diff.Lines)
         {
             switch (line.Type)
             {
                 case ChangeType.Inserted:
-                    para.Inlines.Add(new Run(line.Text)
+                    para.Inlines.Add(new Run(" " + line.Text + " ")
                     {
-                        Background = Brushes.LightGreen,
+                        Background = new SolidColorBrush(Color.FromRgb(198, 239, 206)),
+                        Foreground = new SolidColorBrush(Color.FromRgb(0, 97, 0)),
                         FontWeight = FontWeights.SemiBold
                     });
                     break;
                 case ChangeType.Deleted:
-                    para.Inlines.Add(new Run(line.Text)
+                    para.Inlines.Add(new Run(" " + line.Text + " ")
                     {
-                        Background = Brushes.LightCoral,
-                        TextDecorations = TextDecorations.Strikethrough,
-                        Foreground = Brushes.DarkRed
+                        Background = new SolidColorBrush(Color.FromRgb(255, 199, 206)),
+                        Foreground = new SolidColorBrush(Color.FromRgb(156, 0, 6)),
+                        TextDecorations = TextDecorations.Strikethrough
                     });
                     break;
                 default:
@@ -69,27 +72,8 @@ public partial class OverlayWindow : Window
             }
         }
 
-        var doc = new FlowDocument(para)
-        {
-            PageWidth = 420,
-            FontSize = 13
-        };
-        var rtb = new System.Windows.Controls.RichTextBox(doc)
-        {
-            IsReadOnly = true,
-            BorderThickness = new Thickness(0),
-            Background = Brushes.Transparent,
-            MaxWidth = 420,
-            MaxHeight = 100
-        };
-
-        // Replace the TextBlock with the rich diff view
-        if (DiffTextBlock.Parent is System.Windows.Controls.Panel panel)
-        {
-            var idx = panel.Children.IndexOf(DiffTextBlock);
-            panel.Children.Remove(DiffTextBlock);
-            panel.Children.Insert(idx, rtb);
-        }
+        doc.Blocks.Add(para);
+        DiffBox.Document = doc;
     }
 
     private void AcceptAll_Click(object sender, RoutedEventArgs e)
@@ -101,5 +85,6 @@ public partial class OverlayWindow : Window
     private void Dismiss_Click(object sender, RoutedEventArgs e)
     {
         _controller.DismissOverlay();
+        Close();
     }
 }
