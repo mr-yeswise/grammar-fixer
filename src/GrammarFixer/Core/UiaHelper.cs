@@ -13,7 +13,7 @@ namespace GrammarFixer.Core;
 /// Strategy:
 /// 1. ValuePattern.SetValue  — Win32, WPF, UWP, most apps
 /// 2. TextPattern             — read-only fallback for apps that only expose TextPattern
-/// 3. Clipboard               — Ctrl+A / Ctrl+V for Electron (VS Code, Slack, Discord, WhatsApp)
+/// 3. Clipboard               — selection-aware copy/paste fallback for Electron (VS Code, Slack, Discord, WhatsApp)
 ///
 /// Caret position: UIA BoundingRectangle → Win32 GetCaretPos fallback.
 ///
@@ -75,6 +75,53 @@ public static class UiaHelper
             return clipboardText;
         }
         catch { return null; }
+    }
+
+    /// <summary>
+    /// Gets ONLY the currently selected text.
+    /// Strategy 1: TextPattern.GetSelection()
+    /// Strategy 2: Ctrl+C selection into clipboard (no Ctrl+A)
+    /// </summary>
+    public static string? GetSelectedText()
+    {
+        try
+        {
+            var focused = AutomationElement.FocusedElement;
+            if (focused != null && focused.TryGetCurrentPattern(TextPattern.Pattern, out var tp))
+            {
+                var ranges = ((TextPattern)tp).GetSelection();
+                if (ranges.Length > 0)
+                {
+                    var text = ranges[0].GetText(-1);
+                    if (!string.IsNullOrEmpty(text)) return text;
+                }
+            }
+        }
+        catch { }
+        return ReadSelectionViaClipboard();
+    }
+
+    /// <summary>
+    /// Replaces ONLY the current selection with newText.
+    /// Does NOT do Ctrl+A. Pastes directly over the selection.
+    /// </summary>
+    public static bool ReplaceSelectedText(string newText)
+    {
+        try
+        {
+            var focused = AutomationElement.FocusedElement;
+            if (focused != null && focused.TryGetCurrentPattern(TextPattern.Pattern, out var tp))
+            {
+                var ranges = ((TextPattern)tp).GetSelection();
+                if (ranges.Length > 0)
+                {
+                    ranges[0].Select();
+                    return PasteViaClipboard(newText);
+                }
+            }
+        }
+        catch { }
+        return PasteViaClipboard(newText);
     }
 
     /// <summary>Replaces the focused element's text with newText.</summary>
@@ -170,13 +217,38 @@ public static class UiaHelper
         catch { return null; }
     }
 
+    private static string? ReadSelectionViaClipboard()
+    {
+        try
+        {
+            var prev = System.Windows.Clipboard.GetText();
+            System.Windows.Forms.SendKeys.SendWait("^c");
+            System.Threading.Thread.Sleep(80);
+            var captured = System.Windows.Clipboard.GetText();
+            if (!string.IsNullOrEmpty(prev))
+                System.Windows.Clipboard.SetText(prev);
+            return string.IsNullOrEmpty(captured) ? null : captured;
+        }
+        catch { return null; }
+    }
+
+    private static bool PasteViaClipboard(string text)
+    {
+        try
+        {
+            System.Windows.Clipboard.SetText(text);
+            System.Windows.Forms.SendKeys.SendWait("^v");
+            System.Threading.Thread.Sleep(30);
+            return true;
+        }
+        catch { return false; }
+    }
+
     private static bool SetViaClipboard(string text)
     {
         try
         {
             System.Windows.Clipboard.SetText(text);
-            System.Windows.Forms.SendKeys.SendWait("^a");
-            System.Threading.Thread.Sleep(30);
             System.Windows.Forms.SendKeys.SendWait("^v");
             System.Threading.Thread.Sleep(30);
             return true;
