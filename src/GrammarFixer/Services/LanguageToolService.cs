@@ -12,7 +12,8 @@ namespace GrammarFixer.Services;
 public sealed class LanguageToolService : IDisposable
 {
     public const int DefaultPort = 8081;
-    public static string BaseUrl => $"http://localhost:{DefaultPort}";
+    // Use 127.0.0.1 — LT binds IPv4 only; "localhost" can add ~2s on first .NET HttpClient request.
+    public static string BaseUrl => $"http://127.0.0.1:{DefaultPort}";
 
     private Process? _serverProcess;
     private bool _ready;
@@ -30,6 +31,13 @@ public sealed class LanguageToolService : IDisposable
     {
         if (_ready) return true;
 
+        if (await ProbeServerAsync(ct))
+        {
+            _ready = true;
+            DiagnosticLogger.Log(DiagnosticLogLevel.Info, "Reusing existing LanguageTool server");
+            return true;
+        }
+
         var jarPath = FindJarPath();
         if (jarPath == null)
         {
@@ -37,9 +45,22 @@ public sealed class LanguageToolService : IDisposable
             return false;
         }
 
+        var toolsDir = System.IO.Path.GetDirectoryName(jarPath)!;
+        var libsDir = System.IO.Path.Combine(toolsDir, "libs");
+        var libsJarCount = System.IO.Directory.Exists(libsDir)
+            ? System.IO.Directory.GetFiles(libsDir, "*.jar").Length
+            : 0;
+
         if (!IsJavaAvailable())
         {
             DiagnosticLogger.Log(DiagnosticLogLevel.Warn, "Java not found in PATH");
+            return false;
+        }
+
+        if (!System.IO.Directory.Exists(libsDir) || libsJarCount == 0)
+        {
+            DiagnosticLogger.Log(DiagnosticLogLevel.Warn,
+                "LanguageTool libs/ folder missing next to languagetool-server.jar. Copy the full LanguageTool ZIP contents into tools/.");
             return false;
         }
 
@@ -51,7 +72,7 @@ public sealed class LanguageToolService : IDisposable
             CreateNoWindow = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            WorkingDirectory = System.IO.Path.GetDirectoryName(jarPath)
+            WorkingDirectory = toolsDir
         };
 
         try
@@ -71,24 +92,34 @@ public sealed class LanguageToolService : IDisposable
         _ = Task.Run(() => ReadOutputAsync(_serverProcess.StandardOutput, "stdout"));
         _ = Task.Run(() => ReadOutputAsync(_serverProcess.StandardError, "stderr"));
 
-        // Poll health endpoint (max 30s)
+        return await WaitForServerReadyAsync(ct);
+    }
+
+    private static async Task<bool> ProbeServerAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+            var resp = await http.GetAsync($"{BaseUrl}/v2/languages", ct);
+            return resp.IsSuccessStatusCode;
+        }
+        catch { return false; }
+    }
+
+    private async Task<bool> WaitForServerReadyAsync(CancellationToken ct)
+    {
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
         var deadline = DateTime.UtcNow.AddSeconds(30);
-        
+
         while (DateTime.UtcNow < deadline && !ct.IsCancellationRequested)
         {
-            try
+            if (await ProbeServerAsync(ct))
             {
-                var resp = await http.GetAsync($"{BaseUrl}/v2/languages", ct);
-                if (resp.IsSuccessStatusCode)
-                {
-                    _ready = true;
-                    DiagnosticLogger.Log(DiagnosticLogLevel.Info, "LanguageTool server ready");
-                    return true;
-                }
+                _ready = true;
+                DiagnosticLogger.Log(DiagnosticLogLevel.Info, "LanguageTool server ready");
+                return true;
             }
-            catch { /* ignore */ }
-            
+
             await Task.Delay(500, ct);
         }
 

@@ -81,7 +81,20 @@ public sealed partial class TrayIconManager : IDisposable
 
     private void UpdateIcon(bool enabled) { _enabled = enabled; RefreshIcon(); }
 
-    public void SetProcessingState(bool processing) { _isProcessing = processing; RefreshIcon(); }
+    public void SetProcessingState(bool processing)
+    {
+        void Apply()
+        {
+            _isProcessing = processing;
+            RefreshIcon();
+        }
+
+        var dispatcher = WpfApp.Current?.Dispatcher;
+        if (dispatcher == null || dispatcher.CheckAccess())
+            Apply();
+        else
+            dispatcher.Invoke(Apply);
+    }
 
     private void RefreshIcon()
     {

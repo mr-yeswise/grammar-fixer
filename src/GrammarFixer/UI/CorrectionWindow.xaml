@@ -23,6 +23,7 @@
                 <ResourceDictionary Source="pack://application:,,,/GrammarFixer;component/UI/Styles.xaml"/>
             </ResourceDictionary.MergedDictionaries>
             <local:DiffColorConverter x:Key="DiffColorConverter"/>
+            <local:DiffDecorationConverter x:Key="DiffDecorationConverter"/>
         </ResourceDictionary>
     </Window.Resources>
 

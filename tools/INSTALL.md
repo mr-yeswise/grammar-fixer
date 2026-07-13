@@ -9,11 +9,17 @@ GrammarFixer uses a local LanguageTool server for grammar checking (English only
 - Or: Oracle JDK, OpenJDK, etc.
 - Verify: Open terminal and run `java -version` → should show 11+
 
-### 2. Download LanguageTool Server JAR
+### 2. Download LanguageTool Standalone Server
 1. Go to: https://languagetool.org/download/LanguageTool-stable.zip
 2. Download and extract the ZIP
-3. Find `languagetool-server.jar` in the extracted folder
-4. Copy it to: `tools/languagetool-server.jar` (next to this file)
+3. Copy **the entire extracted folder contents** into `tools/` (not just the JAR):
+   - `languagetool-server.jar`
+   - `libs/` folder (required dependency JARs)
+   - `org/` folder (language rules/resources)
+   - `META-INF/` folder
+4. Your `tools/` folder should contain `languagetool-server.jar` **and** a `libs/` directory next to it
+
+> Copying only `languagetool-server.jar` will fail at runtime with `ClassNotFoundException: org.slf4j.LoggerFactory`.
 
 ### 3. Run GrammarFixer
 - The app will auto-start the LanguageTool server on first launch
@@ -35,7 +41,8 @@ java -Dfile.encoding=utf-8 -Xms256m -Xmx512m -jar languagetool-server.jar --port
 | Issue | Solution |
 |-------|----------|
 | "Java not found" | Install JDK 11+, ensure `java` is in PATH |
-| "LT JAR not found" | Copy `languagetool-server.jar` to `tools/` folder |
+| "LT JAR not found" | Copy the full LanguageTool ZIP contents into `tools/` (see step 2 above) |
+| `ClassNotFoundException: org.slf4j.LoggerFactory` | Missing `libs/` folder — copy the full ZIP contents, not just the JAR |
 | Server won't start | Check port 8081-8090 not in use; check Java version |
 | Server starts but corrections fail | Check firewall/antivirus isn't blocking localhost:8081 |
 | "LT server did not become ready" | First run loads n-grams (10-30s); increase timeout in `LanguageToolService.cs` |

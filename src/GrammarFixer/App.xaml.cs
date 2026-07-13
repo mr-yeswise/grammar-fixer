@@ -15,6 +15,7 @@ public partial class App : WpfApp
 
     protected override async void OnStartup(StartupEventArgs e)
     {
+        HookTerminalCrashLogging();
         base.OnStartup(e);
         var settings = SettingsService.Load();
 
@@ -41,6 +42,36 @@ public partial class App : WpfApp
         }
 
         AutostartHelper.EnsureAutostart();
+    }
+
+    /// <summary>
+    /// Mirrors unhandled exceptions to stderr when launched via <c>dotnet run</c> or a terminal.
+    /// File logs remain the primary trail in %LOCALAPPDATA%\GrammarFixer\logs\.
+    /// </summary>
+    private void HookTerminalCrashLogging()
+    {
+        DispatcherUnhandledException += (_, args) =>
+        {
+            var msg = $"[UI CRASH] {args.Exception}";
+            Console.Error.WriteLine(msg);
+            DiagnosticLogger.Log(DiagnosticLogLevel.Error, msg);
+            args.Handled = false;
+        };
+
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+        {
+            var msg = $"[FATAL] {args.ExceptionObject}";
+            Console.Error.WriteLine(msg);
+            DiagnosticLogger.Log(DiagnosticLogLevel.Error, msg);
+        };
+
+        TaskScheduler.UnobservedTaskException += (_, args) =>
+        {
+            var msg = $"[TASK CRASH] {args.Exception}";
+            Console.Error.WriteLine(msg);
+            DiagnosticLogger.Log(DiagnosticLogLevel.Error, msg);
+            args.SetObserved();
+        };
     }
 
     protected override void OnExit(ExitEventArgs e)

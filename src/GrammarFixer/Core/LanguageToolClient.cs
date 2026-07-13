@@ -84,9 +84,9 @@ public sealed class LanguageToolClient
                 FromCache = false
             };
         }
-        catch (TaskCanceledException)
+        catch (OperationCanceledException)
         {
-            DiagnosticLogger.Log(DiagnosticLogLevel.Warn, "LT: request timed out");
+            DiagnosticLogger.Log(DiagnosticLogLevel.Warn, "LT: request cancelled or timed out");
             return null;
         }
         catch (Exception ex)

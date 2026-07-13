@@ -65,29 +65,37 @@ public partial class CorrectionWindow : Window
 
     private async Task OnTextChangedDebounced()
     {
-        await Dispatcher.InvokeAsync(async () =>
+        var text = await Dispatcher.InvokeAsync(() => InputBox?.Text ?? string.Empty);
+        if (string.IsNullOrWhiteSpace(text) || text == _lastInput || _isCorrecting) return;
+
+        _isCorrecting = true;
+        await Dispatcher.InvokeAsync(() =>
         {
-            var text = InputBox?.Text ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(text) || text == _lastInput || _isCorrecting) return;
-            _isCorrecting = true;
             if (ProcessingPanel != null) ProcessingPanel.Visibility = Visibility.Visible;
-            try
+        });
+
+        try
+        {
+            var result = await _ltClient.CheckAsync(text);
+            if (result != null)
             {
-                var result = await _ltClient.CheckAsync(text);
-                if (result != null)
+                _lastInput = result.Corrected;
+                await Dispatcher.InvokeAsync(() =>
                 {
-                    _lastInput = result.Corrected;
                     UpdateDiffView(result);
                     UpdateCounts(result);
-                }
+                });
             }
-            catch (Exception ex) { DiagnosticLogger.Log(DiagnosticLogLevel.Error, $"CorrectionWindow: {ex.Message}"); }
-            finally
+        }
+        catch (Exception ex) { DiagnosticLogger.Log(DiagnosticLogLevel.Error, $"CorrectionWindow: {ex.Message}"); }
+        finally
+        {
+            _isCorrecting = false;
+            await Dispatcher.InvokeAsync(() =>
             {
-                _isCorrecting = false;
                 if (ProcessingPanel != null) ProcessingPanel.Visibility = Visibility.Collapsed;
-            }
-        });
+            });
+        }
     }
 
     private void UpdateDiffView(CorrectionResult result)
