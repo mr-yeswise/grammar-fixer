@@ -26,6 +26,7 @@ public sealed class AppController : IDisposable
 
     private string?          _lastCapturedText;
     private CorrectionResult? _lastResult;
+    private bool _lastWasSelection = false;
 
     private readonly System.Timers.Timer _typingDebounce;
 
@@ -126,7 +127,12 @@ public sealed class AppController : IDisposable
             WpfApp.Current.Dispatcher.Invoke(() =>
             {
                 if (_settings.UxMode == UxMode.OneClickRewrite)
-                    UiaHelper.SetFocusedText(_lastResult.Corrected);
+                {
+                    if (_lastWasSelection)
+                        UiaHelper.ReplaceSelectedText(_lastResult.Corrected);
+                    else
+                        UiaHelper.SetFocusedText(_lastResult.Corrected);
+                }
                 else
                     ShowOverlay(_lastResult);
                 _floatingBtn?.Hide();
@@ -142,7 +148,12 @@ public sealed class AppController : IDisposable
                 WpfApp.Current.Dispatcher.Invoke(() =>
                 {
                     if (_settings.UxMode == UxMode.OneClickRewrite)
-                        UiaHelper.SetFocusedText(r.Corrected);
+                    {
+                        if (_lastWasSelection)
+                            UiaHelper.ReplaceSelectedText(r.Corrected);
+                        else
+                            UiaHelper.SetFocusedText(r.Corrected);
+                    }
                     else
                         ShowOverlay(r);
                     _floatingBtn?.Hide();
@@ -156,11 +167,20 @@ public sealed class AppController : IDisposable
         if (!_settings.Enabled) return;
         var processName = UiaHelper.GetForegroundProcessName();
         if (!IsAppAllowed(processName)) return;
-        var text = UiaHelper.GetFocusedText();
+        var selected = UiaHelper.GetSelectedText();
+        _lastWasSelection = !string.IsNullOrWhiteSpace(selected);
+        var text = _lastWasSelection ? selected : UiaHelper.GetFocusedText();
         if (string.IsNullOrWhiteSpace(text)) return;
+        _lastCapturedText = text;
         var result = await _pipeline.CorrectNowAsync(text);
         if (result == null || result.Corrected == result.Original) return;
-        WpfApp.Current.Dispatcher.Invoke(() => UiaHelper.SetFocusedText(result.Corrected));
+        WpfApp.Current.Dispatcher.Invoke(() =>
+        {
+            if (_lastWasSelection)
+                UiaHelper.ReplaceSelectedText(result.Corrected);
+            else
+                UiaHelper.SetFocusedText(result.Corrected);
+        });
     }
 
     private void OnTypingKeyDown(Key key)
@@ -197,6 +217,7 @@ public sealed class AppController : IDisposable
             if (string.IsNullOrWhiteSpace(text)) return;
 
             DiagnosticLogger.Log(DiagnosticLogLevel.Info, $"Captured {text!.Length} chars");
+            _lastWasSelection = false;
             _lastCapturedText = text;
             _lastResult       = null;
 
@@ -236,7 +257,12 @@ public sealed class AppController : IDisposable
     }
 
     public void ApplyCorrectionFromWindow(string correctedText)
-        => UiaHelper.SetFocusedText(correctedText);
+    {
+        if (_lastWasSelection)
+            UiaHelper.ReplaceSelectedText(correctedText);
+        else
+            UiaHelper.SetFocusedText(correctedText);
+    }
 
     public void RunSelfTest()
     {

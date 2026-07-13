@@ -19,6 +19,7 @@ public partial class CorrectionWindow : Window
     private readonly LanguageToolClient  _ltClient;
     private readonly AppController       _controller;
     private readonly System.Timers.Timer _debounce;
+    private CorrectionResult? _lastResult;
     private string _lastInput   = string.Empty;
     private bool   _isCorrecting;
 
@@ -100,6 +101,7 @@ public partial class CorrectionWindow : Window
 
     private void UpdateDiffView(CorrectionResult result)
     {
+        _lastResult = result;
         var diff  = new InlineDiffBuilder(new Differ()).BuildDiffModel(result.Original, result.Corrected);
         var lines = new List<DiffLineViewModel>();
         foreach (var piece in diff.Lines)
@@ -130,26 +132,27 @@ public partial class CorrectionWindow : Window
 
     private void CopyCorrected_Click(object sender, RoutedEventArgs e)
     {
-        var text = GetDiffText();
-        WpfClipboard.SetText(text);
-        DiagnosticLogger.Log(DiagnosticLogLevel.Info, "Copied corrected text to clipboard");
+        var text = GetCorrectedText();
+        if (!string.IsNullOrEmpty(text)) WpfClipboard.SetText(text);
     }
 
     private void ApplyClipboard_Click(object sender, RoutedEventArgs e)
     {
-        WpfClipboard.SetText(GetDiffText());
+        var text = GetCorrectedText();
+        if (!string.IsNullOrEmpty(text)) WpfClipboard.SetText(text);
     }
 
     private async void SendToField_Click(object sender, RoutedEventArgs e) => await SendToFieldAsync();
 
     private async Task SendToFieldAsync()
     {
-        var text = GetDiffText();
+        var text = GetCorrectedText();
         if (!string.IsNullOrWhiteSpace(text))
         {
             _controller.ApplyCorrectionFromWindow(text);
             Close();
         }
+        await Task.CompletedTask;
     }
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
@@ -161,9 +164,7 @@ public partial class CorrectionWindow : Window
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private string GetDiffText()
-        => string.Join(string.Empty,
-            DiffItems?.Items.Cast<DiffLineViewModel>().Select(l => l.Text) ?? []);
+    private string GetCorrectedText() => _lastResult?.Corrected ?? string.Empty;
 
     private void SavePosition()
     {

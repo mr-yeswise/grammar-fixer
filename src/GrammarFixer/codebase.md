@@ -58,7 +58,7 @@ src/GrammarFixer/
 │   ├── KeyboardHook.cs           # WH_KEYBOARD_LL low-level hook
 │   ├── LanguageToolClient.cs     # HTTP POST /v2/check → CorrectionResult
 │   ├── LruCache.cs               # Generic LRU used by pipeline
-│   └── UiaHelper.cs              # UI Automation: get/set focused text, caret position
+│   └── UiaHelper.cs              # UI Automation: focused + selected text read/replace, caret position
 ├── Models/
 │   ├── AppSettings.cs            # User config (Enabled, UxMode, hotkeys, debounce, app lists)
 │   ├── CorrectionResult.cs       # record: Original, Corrected, Edits[], FromCache
@@ -373,6 +373,18 @@ Ctrl+Alt+G → AppController.OnHotkeyPressed() → pipeline → SetFocusedText
 Ctrl+Alt+Shift+G → AppController.ToggleCorrectionWindow()
 ```
 
+Hotkey selection path:
+
+```
+Ctrl+Alt+G
+  └─► AppController.OnHotkeyPressed()
+        ├─► UiaHelper.GetSelectedText()
+        ├─► (fallback) UiaHelper.GetFocusedText()
+        ├─► CorrectionPipeline.CorrectNowAsync(text)
+        └─► if selection: UiaHelper.ReplaceSelectedText(corrected)
+            else: UiaHelper.SetFocusedText(corrected)
+```
+
 ---
 
 ## UI Components
@@ -403,6 +415,13 @@ void ApplyCorrectionFromWindow(string text)
 void AttachTrayIcon(TrayIconManager t)
 void RunSelfTest()
 ```
+
+Selection context state:
+- `_lastWasSelection` (private bool) tracks whether the last hotkey capture came from selected text, so apply actions route to `ReplaceSelectedText(...)` instead of full-field replace.
+
+UiaHelper selection helpers:
+- `GetSelectedText()` — reads selection only, no Ctrl+A.
+- `ReplaceSelectedText(string)` — pastes over current selection, no Ctrl+A.
 
 ---
 
@@ -437,6 +456,8 @@ void RunSelfTest()
 | Correction + cache | `Core/CorrectionPipeline.cs` |
 | Typing debounce + orchestration | `Core/AppController.cs` |
 | Text capture/apply (UIA) | `Core/UiaHelper.cs` |
+| Selected text read | `Core/UiaHelper.cs` → `GetSelectedText()` |
+| Selected text replace | `Core/UiaHelper.cs` → `ReplaceSelectedText()` |
 | Global hotkey | `Core/HotkeyManager.cs` |
 | Raw keyboard hook | `Core/KeyboardHook.cs` |
 | Settings persistence | `Services/SettingsService.cs` |

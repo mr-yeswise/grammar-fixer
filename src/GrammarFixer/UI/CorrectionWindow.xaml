@@ -132,11 +132,11 @@
             <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,4,0,0">
                 <Button Content="Copy Corrected" Style="{StaticResource SecondaryButtonStyle}"
                         Padding="16,8" Margin="8,0,0,0" Click="CopyCorrected_Click"/>
-                <Button Content="Apply to Clipboard" Style="{StaticResource SecondaryButtonStyle}"
+                <Button Content="Copy to Clipboard" Style="{StaticResource SecondaryButtonStyle}"
                         Padding="16,8" Margin="8,0,0,0" Click="ApplyClipboard_Click"/>
-                <Button Content="Send to Field" Style="{StaticResource AccentButtonStyle}"
+                <Button Content="Replace Selection" Style="{StaticResource AccentButtonStyle}"
                         Padding="16,8" Margin="8,0,0,0" Click="SendToField_Click"
-                        ToolTip="Sends corrected text to the active text field at caret position"/>
+                        ToolTip="Pastes corrected text into the last active text field, replacing your selection (Ctrl+Enter)"/>
             </StackPanel>
         </Grid>
     </Border>
