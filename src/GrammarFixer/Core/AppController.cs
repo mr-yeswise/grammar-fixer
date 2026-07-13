@@ -1,6 +1,7 @@
 using System.Windows.Input;
 using System.Windows;
 using System.IO;
+using System.Timers;
 using GrammarFixer.Models;
 using GrammarFixer.Services;
 using GrammarFixer.UI;
@@ -11,53 +12,64 @@ namespace GrammarFixer.Core;
 /// Central orchestrator.
 /// Flow:
 ///   KeyboardHook fires on every keypress
-///   -> debounce 400ms
+///   -> debounce 300ms
 ///   -> read focused text via UIA
-///   -> CorrectionPipeline corrects
+///   -> CorrectionPipeline corrects via LanguageTool
 ///   -> show FloatingButton pill near caret
-///   -> on pill click OR Ctrl+Alt+G: apply correction or show overlay
+///   -> on pill click OR Ctrl+Alt+G: apply correction
+///   -> Ctrl+Alt+Shift+G opens CorrectionWindow for paste & correct
 /// </summary>
 public sealed class AppController : IDisposable
 {
     private AppSettings _settings;
     private readonly CorrectionPipeline _pipeline;
+    private readonly LanguageToolClient _ltClient;
+    private readonly LanguageToolService _ltService;
     private readonly HotkeyManager _hotkey;
+    private readonly HotkeyManager _correctionWindowHotkey;
     private readonly KeyboardHook _typingHook;
     private OverlayWindow? _overlay;
     private FloatingButton? _floatingBtn;
+    private CorrectionWindow? _correctionWindow;
     private bool _disposed;
     private Action<bool>? _setProcessingState;
 
     private string? _lastCapturedText;
     private CorrectionResult? _lastResult;
 
-    private readonly System.Timers.Timer _typingDebounce;
+    private readonly WpfTimer _typingDebounce;
 
     public AppSettings Settings => _settings;
 
-    public AppController(AppSettings settings)
+    public AppController(AppSettings settings, LanguageToolClient ltClient, LanguageToolService ltService)
     {
         _settings = settings;
-        _pipeline = new CorrectionPipeline(settings);
+        _ltClient = ltClient;
+        _ltService = ltService;
+        _pipeline = new CorrectionPipeline(settings, ltClient, ltService);
         _pipeline.CorrectionReady += OnCorrectionReady;
 
         _hotkey = new HotkeyManager(settings.HotkeyTrigger);
         _hotkey.HotkeyPressed += OnHotkeyPressed;
 
+        _correctionWindowHotkey = new HotkeyManager(settings.CorrectionWindowHotkey);
+        _correctionWindowHotkey.HotkeyPressed += OnCorrectionWindowHotkey;
+
         _typingHook = new KeyboardHook();
         _typingHook.KeyDown += OnTypingKeyDown;
 
-        _typingDebounce = new System.Timers.Timer(settings.DebounceMs) { AutoReset = false };
+        _typingDebounce = new WpfTimer(settings.DebounceMs) { AutoReset = false };
         _typingDebounce.Elapsed += async (_, _) => await OnTypingPaused();
     }
 
     public void Start()
     {
         _hotkey.Start();
+        _correctionWindowHotkey.Start();
         _typingHook.Install();
-        DiagnosticLogger.Log(DiagnosticLogLevel.Info, "AppController started, hook installed");
+        DiagnosticLogger.Log(DiagnosticLogLevel.Info, "AppController started, hooks installed");
 
-        WpfApp.Current.Dispatcher.Invoke(() =>
+        Application.Current.Dispatcher.Invoke(() =>
         {
             _floatingBtn = new FloatingButton(this);
         });
@@ -66,11 +78,14 @@ public sealed class AppController : IDisposable
     public void Stop()
     {
         _hotkey.Stop();
+        _correctionWindowHotkey.Stop();
         _typingHook.Uninstall();
         _typingDebounce.Stop();
-        WpfApp.Current.Dispatcher.Invoke(() =>
+        
+        Application.Current.Dispatcher.Invoke(() =>
         {
             _overlay?.Close();
+            _correctionWindow?.Close();
             _floatingBtn?.Close();
         });
     }
@@ -80,23 +95,59 @@ public sealed class AppController : IDisposable
         _settings = settings;
         _pipeline.UpdateSettings(settings);
         _typingDebounce.Interval = settings.DebounceMs;
+        
+        _hotkey.UpdateHotkey(settings.HotkeyTrigger);
+        _correctionWindowHotkey.UpdateHotkey(settings.CorrectionWindowHotkey);
+        
         SettingsService.Save(settings);
     }
 
     public void OpenSettings()
     {
-        WpfApp.Current.Dispatcher.Invoke(() =>
+        Application.Current.Dispatcher.Invoke(() =>
         {
             var win = new SettingsWindow(this);
             win.Show();
         });
     }
 
+    public void ToggleCorrectionWindow()
+    {
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            if (_correctionWindow == null || !_correctionWindow.IsLoaded)
+            {
+                _correctionWindow = new CorrectionWindow(_ltClient, this);
+                _correctionWindow.Closed += (_, _) => _correctionWindow = null;
+                
+                // Restore position
+                if (_settings.CorrectionWindowLeft >= 0 && _settings.CorrectionWindowTop >= 0)
+                {
+                    _correctionWindow.Left = _settings.CorrectionWindowLeft;
+                    _correctionWindow.Top = _settings.CorrectionWindowTop;
+                }
+                
+                _correctionWindow.Show();
+            }
+            else
+            {
+                _correctionWindow.Close();
+            }
+        });
+    }
+
+    private void OnCorrectionWindowHotkey()
+    {
+        if (!_settings.Enabled) return;
+        ToggleCorrectionWindow();
+    }
+
+    // Called from FloatingButton click
     public void TriggerFromFloatingButton()
     {
         if (_lastResult != null)
         {
-            WpfApp.Current.Dispatcher.Invoke(() =>
+            Application.Current.Dispatcher.Invoke(() =>
             {
                 if (_settings.UxMode == UxMode.OneClickRewrite)
                     UiaHelper.SetFocusedText(_lastResult.Corrected);
@@ -110,8 +161,9 @@ public sealed class AppController : IDisposable
             {
                 var result = await _pipeline.CorrectNowAsync(_lastCapturedText);
                 if (result == null || result.Corrected == result.Original) return;
+                
                 _lastResult = result;
-                WpfApp.Current.Dispatcher.Invoke(() =>
+                Application.Current.Dispatcher.Invoke(() =>
                 {
                     if (_settings.UxMode == UxMode.OneClickRewrite)
                         UiaHelper.SetFocusedText(result.Corrected);
@@ -125,6 +177,7 @@ public sealed class AppController : IDisposable
     private async void OnHotkeyPressed()
     {
         if (!_settings.Enabled) return;
+        
         var processName = UiaHelper.GetForegroundProcessName();
         if (!IsAppAllowed(processName)) return;
 
@@ -134,7 +187,7 @@ public sealed class AppController : IDisposable
         var result = await _pipeline.CorrectNowAsync(text);
         if (result == null || result.Corrected == result.Original) return;
 
-        WpfApp.Current.Dispatcher.Invoke(() =>
+        Application.Current.Dispatcher.Invoke(() =>
         {
             if (_settings.UxMode == UxMode.OneClickRewrite)
                 UiaHelper.SetFocusedText(result.Corrected);
@@ -150,10 +203,11 @@ public sealed class AppController : IDisposable
         if (_settings.DebugMode)
             DiagnosticLogger.Log(DiagnosticLogLevel.Debug, $"Key pressed: {key}");
 
-        if (key == Key.LeftCtrl  || key == Key.RightCtrl  ||
-            key == Key.LeftAlt   || key == Key.RightAlt   ||
-            key == Key.LeftShift || key == Key.RightShift ||
-            key == Key.LWin      || key == Key.RWin) return;
+        // Ignore modifier keys
+        if (key is Key.LeftCtrl or Key.RightCtrl or
+            Key.LeftAlt or Key.RightAlt or
+            Key.LeftShift or Key.RightShift or
+            Key.LWin or Key.RWin) return;
 
         _typingDebounce.Stop();
         _typingDebounce.Start();
@@ -165,12 +219,12 @@ public sealed class AppController : IDisposable
 
         _setProcessingState?.Invoke(true);
         string? processName = null;
-        string? text        = null;
-        WpfPoint caretPos   = default;
+        string? text = null;
+        WpfPoint caretPos = default;
 
         try
         {
-            await WpfApp.Current.Dispatcher.InvokeAsync(() =>
+            await Application.Current.Dispatcher.InvokeAsync(() =>
             {
                 processName = UiaHelper.GetForegroundProcessName();
             });
@@ -185,7 +239,7 @@ public sealed class AppController : IDisposable
                 return;
             }
 
-            await WpfApp.Current.Dispatcher.InvokeAsync(() =>
+            await Application.Current.Dispatcher.InvokeAsync(() =>
             {
                 text = UiaHelper.GetFocusedText();
                 caretPos = UiaHelper.GetCaretScreenPosition();
@@ -198,7 +252,7 @@ public sealed class AppController : IDisposable
             DiagnosticLogger.Log(DiagnosticLogLevel.Info, $"Captured {text.Length} chars: '{preview}...'");
 
             _lastCapturedText = text;
-            _lastResult       = null;
+            _lastResult = null;
 
             var result = await _pipeline.CorrectNowAsync(text);
             if (result != null && result.Corrected != result.Original)
@@ -209,7 +263,7 @@ public sealed class AppController : IDisposable
                 DiagnosticLogger.Log(DiagnosticLogLevel.Info,
                     $"Correction ready. Original: '{originalPreview}...' → Corrected: '{correctedPreview}...'. Showing pill.");
 
-                WpfApp.Current.Dispatcher.Invoke(() =>
+                Application.Current.Dispatcher.Invoke(() =>
                 {
                     _floatingBtn?.ShowAt(caretPos);
                 });
@@ -237,26 +291,29 @@ public sealed class AppController : IDisposable
 
         try
         {
-            var engine = new StaticCorrectionEngine();
-            var typosPath = Path.Combine(AppContext.BaseDirectory, "Data", "typos_en.json");
-            engine.LoadDictionary(typosPath);
-            var corrected = engine.Correct(sample).Corrected;
-
-            var checks = new[]
+            var result = _pipeline.CorrectNowAsync(sample).Result;
+            if (result == null)
             {
-                ("receive", corrected.Contains("receive", StringComparison.OrdinalIgnoreCase)),
-                ("friend", corrected.Contains("friend", StringComparison.OrdinalIgnoreCase)),
-                ("definitely", corrected.Contains("definitely", StringComparison.OrdinalIgnoreCase))
-            };
-
-            foreach (var check in checks)
+                failures.Add("Pipeline returned null");
+            }
+            else
             {
-                if (check.Item2)
-                    DiagnosticLogger.Log(DiagnosticLogLevel.Info, $"Self-test PASS: contains '{check.Item1}'");
-                else
+                var checks = new[]
                 {
-                    failures.Add(check.Item1);
-                    DiagnosticLogger.Log(DiagnosticLogLevel.Error, $"Self-test FAIL: missing '{check.Item1}'");
+                    ("receive", result.Corrected.Contains("receive", StringComparison.OrdinalIgnoreCase)),
+                    ("friend", result.Corrected.Contains("friend", StringComparison.OrdinalIgnoreCase)),
+                    ("definitely", result.Corrected.Contains("definitely", StringComparison.OrdinalIgnoreCase))
+                };
+
+                foreach (var check in checks)
+                {
+                    if (check.Item2)
+                        DiagnosticLogger.Log(DiagnosticLogLevel.Info, $"Self-test PASS: contains '{check.Item1}'");
+                    else
+                    {
+                        failures.Add(check.Item1);
+                        DiagnosticLogger.Log(DiagnosticLogLevel.Error, $"Self-test FAIL: missing '{check.Item1}'");
+                    }
                 }
             }
         }
@@ -266,17 +323,17 @@ public sealed class AppController : IDisposable
             DiagnosticLogger.Log(DiagnosticLogLevel.Error, $"Self-test exception: {ex.Message}");
         }
 
-        WpfApp.Current.Dispatcher.Invoke(() =>
+        Application.Current.Dispatcher.Invoke(() =>
         {
             if (failures.Count == 0)
             {
-                WpfMessageBox.Show("Self-test: 3/3 passed ✓", "GrammarFixer Self-Test",
+                MessageBox.Show("Self-test: 3/3 passed ✓", "GrammarFixer Self-Test",
                     MessageBoxButton.OK, MessageBoxImage.Information);
             }
             else
             {
                 var details = string.Join(Environment.NewLine, failures.Select(x => $"- {x}"));
-                WpfMessageBox.Show($"Self-test failed:{Environment.NewLine}{details}", "GrammarFixer Self-Test",
+                MessageBox.Show($"Self-test failed:{Environment.NewLine}{details}", "GrammarFixer Self-Test",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         });
@@ -286,8 +343,9 @@ public sealed class AppController : IDisposable
     {
         if (!_settings.Enabled) return;
         if (result.Corrected == result.Original) return;
+        
         _lastResult = result;
-        WpfApp.Current.Dispatcher.Invoke(() =>
+        Application.Current.Dispatcher.Invoke(() =>
         {
             var pos = UiaHelper.GetCaretScreenPosition();
             _floatingBtn?.ShowAt(pos);
@@ -313,6 +371,11 @@ public sealed class AppController : IDisposable
     {
         _overlay?.Close();
         _overlay = null;
+    }
+
+    public void ApplyCorrectionFromWindow(string correctedText)
+    {
+        UiaHelper.SetFocusedText(correctedText);
     }
 
     private bool IsAppAllowed(string? processName)
@@ -356,10 +419,12 @@ public sealed class AppController : IDisposable
     public void Dispose()
     {
         if (_disposed) return;
+        _disposed = true;
+        
         _hotkey.Dispose();
+        _correctionWindowHotkey.Dispose();
         _typingHook.Dispose();
         _typingDebounce.Dispose();
         _pipeline.Dispose();
-        _disposed = true;
     }
 }

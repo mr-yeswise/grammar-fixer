@@ -40,5 +40,11 @@
     <Content Include="Assets\tray_processing.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- LanguageTool JAR - extracted to temp folder on single-file publish -->
+    <Content Include="..\..\tools\languagetool-server.jar">
+      <Link>tools\languagetool-server.jar</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </Content>
   </ItemGroup>
 </Project>

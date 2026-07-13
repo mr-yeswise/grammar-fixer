@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Controls;
 using System.Diagnostics;
 using System.IO;
 using System.Windows.Media.Imaging;
@@ -10,10 +11,10 @@ using GrammarFixer.Services;
 namespace GrammarFixer.UI;
 
 /// <summary>
-/// System tray icon — enable/disable toggle, mode switch, settings, quit.
+/// System tray icon — enable/disable toggle, settings, correction window, quit.
 /// Uses Hardcodet.NotifyIcon.Wpf.
 /// </summary>
-public sealed class TrayIconManager : IDisposable
+public sealed partial class TrayIconManager : IDisposable
 {
     private TaskbarIcon? _trayIcon;
     private readonly AppController _controller;
@@ -31,17 +32,17 @@ public sealed class TrayIconManager : IDisposable
         _trayIcon = new TaskbarIcon
         {
             IconSource = LoadIcon("tray_enabled.ico"),
-            ToolTipText = "GrammarFixer",
+            ToolTipText = "GrammarFixer - LanguageTool Edition",
             ContextMenu = BuildMenu()
         };
         RefreshIcon();
     }
 
-    private System.Windows.Controls.ContextMenu BuildMenu()
+    private ContextMenu BuildMenu()
     {
-        var menu = new System.Windows.Controls.ContextMenu();
+        var menu = new ContextMenu();
 
-        var toggleItem = new System.Windows.Controls.MenuItem
+        var toggleItem = new MenuItem
         {
             Header = _controller.Settings.Enabled ? "Disable" : "Enable",
             FontWeight = FontWeights.SemiBold
@@ -55,22 +56,22 @@ public sealed class TrayIconManager : IDisposable
             UpdateIcon(s.Enabled);
         };
 
-        var modeItem = new System.Windows.Controls.MenuItem
+        var modeItem = new MenuItem
         {
-            Header = $"Mode: {_controller.Settings.Mode}"
-        };
-        modeItem.Click += (_, _) =>
-        {
-            var s = _controller.Settings;
-            s.Mode = s.Mode == CorrectionMode.Static ? CorrectionMode.AI : CorrectionMode.Static;
-            _controller.UpdateSettings(s);
-            modeItem.Header = $"Mode: {s.Mode}";
+            Header = "Engine: LanguageTool (local)",
+            IsEnabled = false
         };
 
-        var settingsItem = new System.Windows.Controls.MenuItem { Header = "Settings..." };
+        var settingsItem = new MenuItem { Header = "Settings..." };
         settingsItem.Click += (_, _) => _controller.OpenSettings();
 
-        var viewLogsItem = new System.Windows.Controls.MenuItem { Header = "📋 View Logs..." };
+        var correctionWindowItem = new MenuItem 
+        { 
+            Header = "Correction Window (Ctrl+Alt+Shift+G)" 
+        };
+        correctionWindowItem.Click += (_, _) => _controller.ToggleCorrectionWindow();
+
+        var viewLogsItem = new MenuItem { Header = "View Logs..." };
         viewLogsItem.Click += (_, _) =>
         {
             try
@@ -82,24 +83,22 @@ public sealed class TrayIconManager : IDisposable
                     UseShellExecute = true
                 });
             }
-            catch
-            {
-                // Ignore shell-start errors
-            }
+            catch { }
         };
 
-        var selfTestItem = new System.Windows.Controls.MenuItem { Header = "🧪 Run Self-Test" };
+        var selfTestItem = new MenuItem { Header = "Self-Test" };
         selfTestItem.Click += (_, _) => _controller.RunSelfTest();
 
-        var quitItem = new System.Windows.Controls.MenuItem { Header = "Quit" };
-        quitItem.Click += (_, _) => WpfApp.Current.Shutdown();
+        var quitItem = new MenuItem { Header = "Exit" };
+        quitItem.Click += (_, _) => Application.Current.Shutdown();
 
         menu.Items.Add(toggleItem);
         menu.Items.Add(modeItem);
         menu.Items.Add(settingsItem);
+        menu.Items.Add(correctionWindowItem);
         menu.Items.Add(viewLogsItem);
         menu.Items.Add(selfTestItem);
-        menu.Items.Add(new System.Windows.Controls.Separator());
+        menu.Items.Add(new Separator());
         menu.Items.Add(quitItem);
 
         return menu;
@@ -126,7 +125,7 @@ public sealed class TrayIconManager : IDisposable
         _trayIcon.IconSource = LoadIcon(iconName);
         _trayIcon.ToolTipText = !_enabled
             ? "GrammarFixer (Disabled)"
-            : (_isProcessing ? "GrammarFixer (Processing...)" : "GrammarFixer (Active)");
+            : (_isProcessing ? "GrammarFixer (Processing...)" : "GrammarFixer - LanguageTool Edition");
     }
 
     private static BitmapImage LoadIcon(string name)

@@ -11,8 +11,10 @@ global using WpfColor      = System.Windows.Media.Color;
 global using WpfColors     = System.Windows.Media.Colors;
 global using WpfMessageBox = System.Windows.MessageBox;
 global using WpfMouseArgs  = System.Windows.Input.MouseEventArgs;
+global using WpfTimer      = System.Threading.Timer;       // Use System.Threading.Timer for debounce timers
 
 // Explicit full-qualification aliases for WinForms — only used in UiaHelper
 global using FormsKeys     = System.Windows.Forms.Keys;
 global using FormsSendKeys = System.Windows.Forms.SendKeys;
 global using FormsCursor   = System.Windows.Forms.Cursor;
+global using FormsTimer    = System.Windows.Forms.Timer;    // Only if WinForms Timer explicitly needed

@@ -5,7 +5,8 @@
   <Application.Resources>
     <ResourceDictionary>
       <ResourceDictionary.MergedDictionaries>
-        <ResourceDictionary Source="Resources/TrayMenu.xaml"/>
+        <ResourceDictionary Source="UI/Styles.xaml"/>
+        <ResourceDictionary Source="UI/TrayIconManager.xaml"/>
       </ResourceDictionary.MergedDictionaries>
     </ResourceDictionary>
   </Application.Resources>

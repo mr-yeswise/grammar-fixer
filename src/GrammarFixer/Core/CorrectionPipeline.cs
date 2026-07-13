@@ -1,17 +1,26 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Net.Http;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Timers;
 using GrammarFixer.Models;
 using GrammarFixer.Services;
 
 namespace GrammarFixer.Core;
 
 /// <summary>
-/// Orchestrates correction: routes to StaticEngine or GroqClient,
-/// manages 400ms debounce, and caches last 50 results.
+/// Orchestrates correction: debounces, caches, routes to LanguageToolClient.
 /// </summary>
 public sealed class CorrectionPipeline : IDisposable
 {
-    private readonly StaticCorrectionEngine _staticEngine;
-    private GroqClient? _groqClient;
+    private readonly LanguageToolClient _ltClient;
+    private readonly LanguageToolService _ltService;
     private readonly LruCache<string, CorrectionResult> _cache = new(50);
     private readonly System.Timers.Timer _debounce;
     private string? _pendingText;
@@ -20,35 +29,20 @@ public sealed class CorrectionPipeline : IDisposable
 
     public event Action<CorrectionResult>? CorrectionReady;
 
-    public CorrectionPipeline(AppSettings settings)
+    public CorrectionPipeline(AppSettings settings, LanguageToolClient ltClient, LanguageToolService ltService)
     {
         _settings = settings;
-        _staticEngine = new StaticCorrectionEngine();
-
-        // AppContext.BaseDirectory is correct for single-file published apps
-        var typosPath = Path.Combine(
-            AppContext.BaseDirectory, "Data", "typos_en.json");
-        _staticEngine.LoadDictionary(typosPath);
+        _ltClient = ltClient;
+        _ltService = ltService;
 
         _debounce = new System.Timers.Timer(settings.DebounceMs) { AutoReset = false };
         _debounce.Elapsed += async (_, _) => await RunCorrectionAsync();
-
-        RefreshGroqClient();
     }
 
     public void UpdateSettings(AppSettings settings)
     {
         _settings = settings;
         _debounce.Interval = settings.DebounceMs;
-        RefreshGroqClient();
-    }
-
-    private void RefreshGroqClient()
-    {
-        var apiKey = CredentialService.LoadApiKey();
-        _groqClient = !string.IsNullOrWhiteSpace(apiKey)
-            ? new GroqClient(apiKey, _settings.GroqModel)
-            : null;
     }
 
     /// <summary>Queue text for correction after debounce interval.</summary>
@@ -69,6 +63,7 @@ public sealed class CorrectionPipeline : IDisposable
     {
         var text = _pendingText;
         if (string.IsNullOrWhiteSpace(text)) return;
+        
         var result = await RunCorrectionForAsync(text);
         if (result != null)
             CorrectionReady?.Invoke(result);
@@ -77,6 +72,7 @@ public sealed class CorrectionPipeline : IDisposable
     private async Task<CorrectionResult?> RunCorrectionForAsync(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
+        
         DiagnosticLogger.Log(DiagnosticLogLevel.Info, $"Pipeline: mode={_settings.Mode}, text length={text.Length}");
 
         if (_cache.TryGet(text, out var cached))
@@ -87,18 +83,18 @@ public sealed class CorrectionPipeline : IDisposable
 
         CorrectionResult? result;
 
-        if (_settings.Mode == CorrectionMode.Static || _groqClient == null)
+        if (_settings.Mode == CorrectionMode.LanguageTool)
         {
-            DiagnosticLogger.Log(DiagnosticLogLevel.Info, "Pipeline: running static/AI engine (static)");
-            result = _staticEngine.Correct(text);
+            DiagnosticLogger.Log(DiagnosticLogLevel.Info, "Pipeline: running LanguageTool");
+            _cts.Cancel();
+            _cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            result = await _ltClient.CheckAsync(text, _ltService.BaseUrl, _cts.Token);
         }
         else
         {
-            DiagnosticLogger.Log(DiagnosticLogLevel.Info, "Pipeline: running static/AI engine (AI)");
-            _cts.Cancel();
-            _cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
-            result = await _groqClient.CorrectAsync(text, _cts.Token);
-            result ??= _staticEngine.Correct(text);
+            // Should not happen - only LanguageTool mode exists now
+            DiagnosticLogger.Log(DiagnosticLogLevel.Warn, "Pipeline: unknown mode, returning original");
+            result = new CorrectionResult { Original = text, Corrected = text, Edits = [], FromCache = false };
         }
 
         if (result != null)

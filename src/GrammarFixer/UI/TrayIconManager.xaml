@@ -1,9 +1,23 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                    xmlns:tb="http://www.hardcodet.net/taskbar">
-  <tb:TaskbarIcon x:Key="TrayIconControl"
-                  x:Name="TrayIcon"
-                  IconSource="/Assets/tray_enabled.ico"
-                  ToolTipText="GrammarFixer"
-                  MenuActivation="RightClick"/>
+                    xmlns:tb="http://www.hardcodet.net/taskbar"
+                    x:Class="GrammarFixer.UI.TrayIconManager">
+    
+    <ContextMenu x:Key="TrayContextMenu">
+        <MenuItem Header="Correction Window (Ctrl+Alt+Shift+G)" Click="CorrectionWindow_Click"/>
+        <Separator/>
+        <MenuItem Header="Settings..." Click="Settings_Click"/>
+        <MenuItem Header="Self-Test" Click="SelfTest_Click"/>
+        <Separator/>
+        <MenuItem Header="Enabled" IsCheckable="True" IsChecked="{Binding Enabled, Mode=TwoWay}"/>
+        <Separator/>
+        <MenuItem Header="Exit" Click="Exit_Click"/>
+    </ContextMenu>
+
+    <tb:TaskbarIcon x:Key="TrayIconControl"
+                    x:Name="TrayIcon"
+                    IconSource="/Assets/tray_enabled.ico"
+                    ToolTipText="GrammarFixer - LanguageTool Edition"
+                    ContextMenu="{StaticResource TrayContextMenu}"
+                    DoubleClickCommand="{Binding ToggleCorrectionWindowCommand}"/>
 </ResourceDictionary>
