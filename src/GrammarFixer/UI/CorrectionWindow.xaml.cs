@@ -1,13 +1,6 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Text.Json;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Media;
 using DiffPlex;
 using DiffPlex.DiffBuilder;
 using DiffPlex.DiffBuilder.Model;
@@ -18,52 +11,39 @@ using GrammarFixer.Services;
 namespace GrammarFixer.UI;
 
 /// <summary>
-/// Floating correction window for paste-and-correct workflow.
-/// TextArea with auto-correct, inline diff view, and action buttons.
+/// Floating correction window — paste text, auto-corrects via LanguageTool,
+/// shows inline diff, one-click copy/apply.
 /// </summary>
 public partial class CorrectionWindow : Window
 {
-    private readonly LanguageToolClient _ltClient;
-    private readonly AppController _controller;
+    private readonly LanguageToolClient  _ltClient;
+    private readonly AppController       _controller;
     private readonly System.Timers.Timer _debounce;
-    private string _lastInput = "";
-    private bool _isCorrecting;
-    private bool _isLoaded;
+    private string _lastInput   = string.Empty;
+    private bool   _isCorrecting;
 
     public CorrectionWindow(LanguageToolClient ltClient, AppController controller)
     {
         InitializeComponent();
-        
-        _ltClient = ltClient;
+        _ltClient   = ltClient;
         _controller = controller;
-        
-        _debounce = new System.Timers.Timer(300) { AutoReset = false };
+        _debounce   = new System.Timers.Timer(400) { AutoReset = false };
         _debounce.Elapsed += async (_, _) => await OnTextChangedDebounced();
-        
+        Loaded  += (_, _) => { InputBox?.Focus(); };
+        KeyDown += (_, e) => { if (e.Key == Key.Escape) Close(); };
         Closing += (_, _) => SavePosition();
-        Loaded += (_, _) => 
-        {
-            _isLoaded = true;
-            InputBox.Focus();
-        };
-        
-        KeyDown += (_, e) => 
-        {
-            if (e.Key == Key.Escape) Close();
-        };
     }
 
-    private async void InputBox_TextChanged(object sender, TextChangedEventArgs e)
+    private void InputBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         _debounce.Stop();
         _debounce.Start();
     }
 
-    private async void InputBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    private async void InputBox_KeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
         {
-            // Ctrl+Enter: send to field
             await SendToFieldAsync();
             e.Handled = true;
         }
@@ -73,128 +53,90 @@ public partial class CorrectionWindow : Window
     {
         await Dispatcher.InvokeAsync(async () =>
         {
-            var text = InputBox.Text;
-            if (string.IsNullOrWhiteSpace(text) || text == _lastInput || _isCorrecting)
-                return;
-
+            var text = InputBox?.Text ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(text) || text == _lastInput || _isCorrecting) return;
             _isCorrecting = true;
-            ProcessingPanel.Visibility = Visibility.Visible;
-
+            if (ProcessingPanel != null) ProcessingPanel.Visibility = Visibility.Visible;
             try
             {
-                // Use the LT service base URL
-                var baseUrl = _controller.Settings.Mode == CorrectionMode.LanguageTool 
-                    ? _ltClient.GetType().GetProperty("BaseUrl")?.GetValue(_ltClient) as string ?? "http://localhost:8081"
-                    : "http://localhost:8081";
-
-                var result = await _ltClient.CheckAsync(text, baseUrl);
-                
-                if (result != null && result.Corrected != result.Original)
+                var result = await _ltClient.CheckAsync(text);
+                if (result != null)
                 {
                     _lastInput = result.Corrected;
                     UpdateDiffView(result);
                     UpdateCounts(result);
                 }
-                else if (result != null)
-                {
-                    // No corrections - still show clean diff
-                    UpdateDiffView(result);
-                    UpdateCounts(result);
-                }
             }
-            catch (Exception ex)
-            {
-                DiagnosticLogger.Log(DiagnosticLogLevel.Error, $"CorrectionWindow error: {ex.Message}");
-            }
+            catch (Exception ex) { DiagnosticLogger.Log(DiagnosticLogLevel.Error, $"CorrectionWindow: {ex.Message}"); }
             finally
             {
                 _isCorrecting = false;
-                ProcessingPanel.Visibility = Visibility.Collapsed;
+                if (ProcessingPanel != null) ProcessingPanel.Visibility = Visibility.Collapsed;
             }
         });
     }
 
     private void UpdateDiffView(CorrectionResult result)
     {
-        var diffBuilder = new InlineDiffBuilder(new Differ());
-        var diff = diffBuilder.BuildDiffModel(result.Original, result.Corrected);
-
+        var diff  = new InlineDiffBuilder(new Differ()).BuildDiffModel(result.Original, result.Corrected);
         var lines = new List<DiffLineViewModel>();
         foreach (var piece in diff.Lines)
         {
             lines.Add(new DiffLineViewModel
             {
-                Text = piece.Text + (piece.Text.EndsWith("\n") ? "" : "\n"),
+                Text = piece.Text,
                 Type = piece.Type switch
                 {
                     ChangeType.Inserted => DiffType.Insert,
-                    ChangeType.Deleted => DiffType.Delete,
+                    ChangeType.Deleted  => DiffType.Delete,
                     ChangeType.Modified => DiffType.Modify,
-                    _ => DiffType.None
+                    _                   => DiffType.None
                 }
             });
         }
-
-        DiffItems.ItemsSource = lines;
+        if (DiffItems != null) DiffItems.ItemsSource = lines;
     }
 
     private void UpdateCounts(CorrectionResult result)
     {
-        InputCharCount.Text = $"{result.Original.Length} chars";
-        OutputCharCount.Text = $"{result.Corrected.Length} chars";
-        EditsCount.Text = $"{result.Edits.Count} edit{(result.Edits.Count == 1 ? "" : "s")}";
+        if (InputCharCount  != null) InputCharCount.Text  = $"{result.Original.Length} chars";
+        if (OutputCharCount != null) OutputCharCount.Text = $"{result.Corrected.Length} chars";
+        if (EditsCount      != null) EditsCount.Text      = $"{result.Edits.Count} edit{(result.Edits.Count == 1 ? "" : "s")}";
     }
 
-    private async void CopyCorrected_Click(object sender, RoutedEventArgs e)
+    private void CopyCorrected_Click(object sender, RoutedEventArgs e)
     {
-        var diffText = string.Join("", DiffItems.Items.Cast<DiffLineViewModel>().Select(l => l.Text));
-        Clipboard.SetText(diffText);
-        ShowToast("Copied to clipboard");
+        var text = string.Join(string.Empty,
+            DiffItems?.Items.Cast<DiffLineViewModel>().Select(l => l.Text) ?? []);
+        WpfClipboard.SetText(text);
+        DiagnosticLogger.Log(DiagnosticLogLevel.Info, "Copied corrected text to clipboard");
     }
 
-    private async void ApplyClipboard_Click(object sender, RoutedEventArgs e)
+    private void ApplyClipboard_Click(object sender, RoutedEventArgs e)
     {
-        var diffText = string.Join("", DiffItems.Items.Cast<DiffLineViewModel>().Select(l => l.Text));
-        Clipboard.SetText(diffText);
-        ShowToast("Applied to clipboard");
+        var text = string.Join(string.Empty,
+            DiffItems?.Items.Cast<DiffLineViewModel>().Select(l => l.Text) ?? []);
+        WpfClipboard.SetText(text);
     }
 
-    private async void SendToField_Click(object sender, RoutedEventArgs e)
-    {
-        await SendToFieldAsync();
-    }
+    private async void SendToField_Click(object sender, RoutedEventArgs e) => await SendToFieldAsync();
 
     private async Task SendToFieldAsync()
     {
-        var diffText = string.Join("", DiffItems.Items.Cast<DiffLineViewModel>().Select(l => l.Text));
-        if (string.IsNullOrWhiteSpace(diffText))
-            return;
-
-        _controller.ApplyCorrectionFromWindow(diffText);
-        Close();
+        var text = string.Join(string.Empty,
+            DiffItems?.Items.Cast<DiffLineViewModel>().Select(l => l.Text) ?? []);
+        if (!string.IsNullOrWhiteSpace(text))
+        {
+            _controller.ApplyCorrectionFromWindow(text);
+            Close();
+        }
     }
 
-    private void Close_Click(object sender, RoutedEventArgs e)
-    {
-        Close();
-    }
+    private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
-    private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    private void Window_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
-        if (e.ChangedButton == MouseButton.Left)
-            DragMove();
-    }
-
-    private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
-    {
-        SavePosition();
-    }
-
-    private void Window_Loaded(object sender, RoutedEventArgs e)
-    {
-        _isLoaded = true;
-        InputBox.Focus();
-        InputBox.CaretIndex = InputBox.Text.Length;
+        if (e.ChangedButton == MouseButton.Left) DragMove();
     }
 
     private void SavePosition()
@@ -202,14 +144,8 @@ public partial class CorrectionWindow : Window
         if (Left >= 0 && Top >= 0)
         {
             _controller.Settings.CorrectionWindowLeft = Left;
-            _controller.Settings.CorrectionWindowTop = Top;
+            _controller.Settings.CorrectionWindowTop  = Top;
             SettingsService.Save(_controller.Settings);
         }
-    }
-
-    private void ShowToast(string message)
-    {
-        // Could add a toast notification here
-        DiagnosticLogger.Log(DiagnosticLogLevel.Info, message);
     }
 }

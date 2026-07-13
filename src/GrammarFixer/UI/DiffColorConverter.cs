@@ -1,28 +1,27 @@
-using System;
 using System.Globalization;
 using System.Windows.Data;
-using DiffPlex.Model;
+using System.Windows.Media;
+using DiffPlex.DiffBuilder.Model;
+using GrammarFixer.Models;
 
 namespace GrammarFixer.UI;
 
-/// <summary>
-/// Converts DiffPlex change types to foreground colors for inline diff display.
-/// </summary>
+/// <summary>Converts DiffType enum to a background brush for the CorrectionWindow diff list.</summary>
 public class DiffColorConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        if (value is ChangeType type)
+        if (value is DiffType type)
         {
             return type switch
             {
-                ChangeType.Inserted => new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x4E, 0xC4, 0x6E)),  // Green
-                ChangeType.Deleted => new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xF4, 0x47, 0x47)),  // Red
-                ChangeType.Imaginary => System.Windows.Media.Brushes.Gray,
-                _ => System.Windows.Media.Brushes.White
+                DiffType.Insert => new SolidColorBrush(WpfColor.FromRgb(198, 239, 206)),
+                DiffType.Delete => new SolidColorBrush(WpfColor.FromRgb(255, 199, 206)),
+                DiffType.Modify => new SolidColorBrush(WpfColor.FromRgb(255, 235, 156)),
+                _               => new SolidColorBrush(Colors.Transparent)
             };
         }
-        return System.Windows.Media.Brushes.White;
+        return new SolidColorBrush(Colors.Transparent);
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

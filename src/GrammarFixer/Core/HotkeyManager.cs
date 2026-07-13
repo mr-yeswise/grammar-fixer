@@ -3,8 +3,7 @@ using System.Windows.Input;
 namespace GrammarFixer.Core;
 
 /// <summary>
-/// Watches keyboard hook events and fires when the configured hotkey combination is detected.
-/// Default: Ctrl+Alt+G
+/// Watches keyboard hook KeyDown events and fires when the configured hotkey is detected.
 /// </summary>
 public sealed class HotkeyManager : IDisposable
 {
@@ -12,7 +11,6 @@ public sealed class HotkeyManager : IDisposable
     private Key _triggerKey;
     private bool _ctrlDown;
     private bool _altDown;
-    private bool _shiftDown;
 
     public event Action? HotkeyPressed;
 
@@ -21,13 +19,11 @@ public sealed class HotkeyManager : IDisposable
         ParseHotkey(hotkey);
         _hook = new KeyboardHook();
         _hook.KeyDown += OnKeyDown;
-        _hook.KeyUp   += OnKeyUp;
     }
 
     public void Start() => _hook.Install();
     public void Stop()  => _hook.Uninstall();
 
-    /// <summary>Swap the hotkey at runtime (called from AppController.UpdateSettings).</summary>
     public void UpdateHotkey(string hotkey) => ParseHotkey(hotkey);
 
     private void ParseHotkey(string hotkey)
@@ -38,25 +34,25 @@ public sealed class HotkeyManager : IDisposable
 
     private void OnKeyDown(Key key)
     {
-        if (key is Key.LeftCtrl  or Key.RightCtrl)  _ctrlDown  = true;
-        if (key is Key.LeftAlt   or Key.RightAlt)   _altDown   = true;
-        if (key is Key.LeftShift or Key.RightShift) _shiftDown = true;
+        if (key is Key.LeftCtrl  or Key.RightCtrl) _ctrlDown = true;
+        if (key is Key.LeftAlt   or Key.RightAlt)  _altDown  = true;
 
         if (_ctrlDown && _altDown && key == _triggerKey)
             HotkeyPressed?.Invoke();
-    }
 
-    private void OnKeyUp(Key key)
-    {
-        if (key is Key.LeftCtrl  or Key.RightCtrl)  _ctrlDown  = false;
-        if (key is Key.LeftAlt   or Key.RightAlt)   _altDown   = false;
-        if (key is Key.LeftShift or Key.RightShift) _shiftDown = false;
+        // Reset on non-modifier keys (prevents stuck state)
+        if (key is not (Key.LeftCtrl or Key.RightCtrl or
+                        Key.LeftAlt  or Key.RightAlt  or
+                        Key.LeftShift or Key.RightShift))
+        {
+            _ctrlDown = false;
+            _altDown  = false;
+        }
     }
 
     public void Dispose()
     {
         _hook.KeyDown -= OnKeyDown;
-        _hook.KeyUp   -= OnKeyUp;
         _hook.Dispose();
     }
 }
