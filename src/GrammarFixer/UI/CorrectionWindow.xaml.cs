@@ -29,10 +29,21 @@ public partial class CorrectionWindow : Window
         _controller = controller;
         _debounce   = new System.Timers.Timer(400) { AutoReset = false };
         _debounce.Elapsed += async (_, _) => await OnTextChangedDebounced();
-        Loaded  += (_, _) => { InputBox?.Focus(); };
-        KeyDown += (_, e) => { if (e.Key == Key.Escape) Close(); };
-        Closing += (_, _) => SavePosition();
     }
+
+    // ── XAML-wired event handlers (declared in CorrectionWindow.xaml) ────────
+
+    private void Window_Loaded(object sender, RoutedEventArgs e)
+    {
+        InputBox?.Focus();
+    }
+
+    private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
+    {
+        SavePosition();
+    }
+
+    // ── Keyboard ─────────────────────────────────────────────────────────────
 
     private void InputBox_TextChanged(object sender, TextChangedEventArgs e)
     {
@@ -42,12 +53,15 @@ public partial class CorrectionWindow : Window
 
     private async void InputBox_KeyDown(object sender, WpfKeyEventArgs e)
     {
+        if (e.Key == Key.Escape) { Close(); return; }
         if (e.Key == Key.Enter && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
         {
             await SendToFieldAsync();
             e.Handled = true;
         }
     }
+
+    // ── Correction logic ─────────────────────────────────────────────────────
 
     private async Task OnTextChangedDebounced()
     {
@@ -104,27 +118,25 @@ public partial class CorrectionWindow : Window
         if (EditsCount      != null) EditsCount.Text      = $"{result.Edits.Count} edit{(result.Edits.Count == 1 ? "" : "s")}";
     }
 
+    // ── Button handlers ───────────────────────────────────────────────────────
+
     private void CopyCorrected_Click(object sender, RoutedEventArgs e)
     {
-        var text = string.Join(string.Empty,
-            DiffItems?.Items.Cast<DiffLineViewModel>().Select(l => l.Text) ?? []);
+        var text = GetDiffText();
         WpfClipboard.SetText(text);
         DiagnosticLogger.Log(DiagnosticLogLevel.Info, "Copied corrected text to clipboard");
     }
 
     private void ApplyClipboard_Click(object sender, RoutedEventArgs e)
     {
-        var text = string.Join(string.Empty,
-            DiffItems?.Items.Cast<DiffLineViewModel>().Select(l => l.Text) ?? []);
-        WpfClipboard.SetText(text);
+        WpfClipboard.SetText(GetDiffText());
     }
 
     private async void SendToField_Click(object sender, RoutedEventArgs e) => await SendToFieldAsync();
 
     private async Task SendToFieldAsync()
     {
-        var text = string.Join(string.Empty,
-            DiffItems?.Items.Cast<DiffLineViewModel>().Select(l => l.Text) ?? []);
+        var text = GetDiffText();
         if (!string.IsNullOrWhiteSpace(text))
         {
             _controller.ApplyCorrectionFromWindow(text);
@@ -138,6 +150,12 @@ public partial class CorrectionWindow : Window
     {
         if (e.ChangedButton == MouseButton.Left) DragMove();
     }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private string GetDiffText()
+        => string.Join(string.Empty,
+            DiffItems?.Items.Cast<DiffLineViewModel>().Select(l => l.Text) ?? []);
 
     private void SavePosition()
     {

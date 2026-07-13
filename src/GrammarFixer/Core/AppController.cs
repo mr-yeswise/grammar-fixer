@@ -265,10 +265,12 @@ public sealed class AppController : IDisposable
         WpfApp.Current.Dispatcher.Invoke(() =>
         {
             if (failures.Count == 0)
-                WpfMessageBox.Show("Self-test: 3/3 passed ✓", "GrammarFixer", MessageBoxButton.OK, MessageBoxImage.Information);
+                WpfMessageBox.Show("Self-test: 3/3 passed ✓", "GrammarFixer",
+                    WpfMsgBoxButton.OK, WpfMsgBoxImage.Information);
             else
-                WpfMessageBox.Show($"Failures:{Environment.NewLine}{string.Join("\n", failures.Select(x => $"  - {x}"))}",
-                    "GrammarFixer", MessageBoxButton.OK, MessageBoxImage.Warning);
+                WpfMessageBox.Show(
+                    $"Failures:{Environment.NewLine}{string.Join("\n", failures.Select(x => $"  - {x}"))}",
+                    "GrammarFixer", WpfMsgBoxButton.OK, WpfMsgBoxImage.Warning);
         });
     }
 

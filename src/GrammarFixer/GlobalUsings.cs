@@ -1,15 +1,20 @@
 // ============================================================
 // Global using aliases — resolve WPF vs WinForms ambiguities
 // One file fixes every CS0104 across the whole project.
+// RULE: Never use bare Application / Clipboard / KeyEventArgs /
+//       MessageBox / MessageBoxButton / MessageBoxImage etc.
+//       Always use the alias from this table.
 // ============================================================
-global using WpfApp          = System.Windows.Application;
-global using WpfPoint        = System.Windows.Point;
-global using WpfColor        = System.Windows.Media.Color;
-global using WpfColors       = System.Windows.Media.Colors;
-global using WpfMessageBox   = System.Windows.MessageBox;
-global using WpfMouseArgs    = System.Windows.Input.MouseEventArgs;
-global using WpfClipboard    = System.Windows.Clipboard;
-global using WpfKeyEventArgs = System.Windows.Input.KeyEventArgs;
+global using WpfApp            = System.Windows.Application;
+global using WpfPoint          = System.Windows.Point;
+global using WpfColor          = System.Windows.Media.Color;
+global using WpfColors         = System.Windows.Media.Colors;
+global using WpfMessageBox     = System.Windows.MessageBox;
+global using WpfMsgBoxButton   = System.Windows.MessageBoxButton;
+global using WpfMsgBoxImage    = System.Windows.MessageBoxImage;
+global using WpfMouseArgs      = System.Windows.Input.MouseEventArgs;
+global using WpfClipboard      = System.Windows.Clipboard;
+global using WpfKeyEventArgs   = System.Windows.Input.KeyEventArgs;
 
 // WinForms — only used in UiaHelper
 global using FormsKeys     = System.Windows.Forms.Keys;
