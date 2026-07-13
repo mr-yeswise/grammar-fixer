@@ -17,6 +17,7 @@ public partial class App : WpfApp
         _controller = new AppController(settings);
         _trayIcon = new TrayIconManager(_controller);
         _trayIcon.Initialize();
+        _controller.AttachTrayIcon(_trayIcon);
         _controller.Start();
         AutostartHelper.EnsureAutostart();
     }

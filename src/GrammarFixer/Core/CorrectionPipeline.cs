@@ -77,18 +77,24 @@ public sealed class CorrectionPipeline : IDisposable
     private async Task<CorrectionResult?> RunCorrectionForAsync(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
+        DiagnosticLogger.Log(DiagnosticLogLevel.Info, $"Pipeline: mode={_settings.Mode}, text length={text.Length}");
 
         if (_cache.TryGet(text, out var cached))
+        {
+            DiagnosticLogger.Log(DiagnosticLogLevel.Info, "Pipeline: cache hit");
             return cached with { FromCache = true };
+        }
 
         CorrectionResult? result;
 
         if (_settings.Mode == CorrectionMode.Static || _groqClient == null)
         {
+            DiagnosticLogger.Log(DiagnosticLogLevel.Info, "Pipeline: running static/AI engine (static)");
             result = _staticEngine.Correct(text);
         }
         else
         {
+            DiagnosticLogger.Log(DiagnosticLogLevel.Info, "Pipeline: running static/AI engine (AI)");
             _cts.Cancel();
             _cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
             result = await _groqClient.CorrectAsync(text, _cts.Token);

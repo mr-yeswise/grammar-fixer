@@ -52,11 +52,18 @@
     <TextBox x:Name="AllowedAppsBox" Height="80" AcceptsReturn="True"
              VerticalScrollBarVisibility="Auto" Margin="0,0,0,10" Padding="4"/>
 
+    <!-- Denied Apps -->
+    <TextBlock Text="Denied Apps (one per line, process name)" FontWeight="SemiBold" Margin="0,0,0,4"/>
+    <TextBox x:Name="DeniedAppsBox" Height="80" AcceptsReturn="True"
+             VerticalScrollBarVisibility="Auto" Margin="0,0,0,10" Padding="4"/>
+
     <!-- Autostart -->
     <CheckBox x:Name="AutostartCheck" Content="Start with Windows" Margin="0,0,0,16"/>
 
     <!-- Buttons -->
-    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Stretch">
+      <Button Content="📋 Open Logs" Click="OpenLogs_Click" Width="100" HorizontalAlignment="Left"
+              Padding="8,6" Margin="0,0,8,0"/>
       <Button Content="Save" Click="Save_Click" Width="80" Margin="0,0,8,0"
               Background="#3498DB" Foreground="White" BorderThickness="0" Padding="8,6"/>
       <Button Content="Cancel" Click="Cancel_Click" Width="80"
