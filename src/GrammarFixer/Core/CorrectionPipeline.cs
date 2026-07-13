@@ -1,13 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
-using System.Linq;
-using System.Net.Http;
-using System.Text;
-using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Timers;
 using GrammarFixer.Models;
 using GrammarFixer.Services;
@@ -20,7 +10,6 @@ namespace GrammarFixer.Core;
 public sealed class CorrectionPipeline : IDisposable
 {
     private readonly LanguageToolClient _ltClient;
-    private readonly LanguageToolService _ltService;
     private readonly LruCache<string, CorrectionResult> _cache = new(50);
     private readonly System.Timers.Timer _debounce;
     private string? _pendingText;
@@ -29,13 +18,11 @@ public sealed class CorrectionPipeline : IDisposable
 
     public event Action<CorrectionResult>? CorrectionReady;
 
-    public CorrectionPipeline(AppSettings settings, LanguageToolClient ltClient, LanguageToolService ltService)
+    public CorrectionPipeline(AppSettings settings, LanguageToolClient ltClient)
     {
-        _settings = settings;
-        _ltClient = ltClient;
-        _ltService = ltService;
-
-        _debounce = new System.Timers.Timer(settings.DebounceMs) { AutoReset = false };
+        _settings  = settings;
+        _ltClient  = ltClient;
+        _debounce  = new System.Timers.Timer(settings.DebounceMs) { AutoReset = false };
         _debounce.Elapsed += async (_, _) => await RunCorrectionAsync();
     }
 
@@ -45,7 +32,6 @@ public sealed class CorrectionPipeline : IDisposable
         _debounce.Interval = settings.DebounceMs;
     }
 
-    /// <summary>Queue text for correction after debounce interval.</summary>
     public void Queue(string text)
     {
         _pendingText = text;
@@ -53,27 +39,22 @@ public sealed class CorrectionPipeline : IDisposable
         _debounce.Start();
     }
 
-    /// <summary>Run correction immediately (hotkey path).</summary>
     public async Task<CorrectionResult?> CorrectNowAsync(string text)
-    {
-        return await RunCorrectionForAsync(text);
-    }
+        => await RunCorrectionForAsync(text);
 
     private async Task RunCorrectionAsync()
     {
         var text = _pendingText;
         if (string.IsNullOrWhiteSpace(text)) return;
-        
         var result = await RunCorrectionForAsync(text);
-        if (result != null)
-            CorrectionReady?.Invoke(result);
+        if (result != null) CorrectionReady?.Invoke(result);
     }
 
     private async Task<CorrectionResult?> RunCorrectionForAsync(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
-        
-        DiagnosticLogger.Log(DiagnosticLogLevel.Info, $"Pipeline: mode={_settings.Mode}, text length={text.Length}");
+
+        DiagnosticLogger.Log(DiagnosticLogLevel.Info, $"Pipeline: text length={text.Length}");
 
         if (_cache.TryGet(text, out var cached))
         {
@@ -81,25 +62,13 @@ public sealed class CorrectionPipeline : IDisposable
             return cached with { FromCache = true };
         }
 
-        CorrectionResult? result;
+        _cts.Cancel();
+        _cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
 
-        if (_settings.Mode == CorrectionMode.LanguageTool)
-        {
-            DiagnosticLogger.Log(DiagnosticLogLevel.Info, "Pipeline: running LanguageTool");
-            _cts.Cancel();
-            _cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            result = await _ltClient.CheckAsync(text, _ltService.BaseUrl, _cts.Token);
-        }
-        else
-        {
-            // Should not happen - only LanguageTool mode exists now
-            DiagnosticLogger.Log(DiagnosticLogLevel.Warn, "Pipeline: unknown mode, returning original");
-            result = new CorrectionResult { Original = text, Corrected = text, Edits = [], FromCache = false };
-        }
+        DiagnosticLogger.Log(DiagnosticLogLevel.Info, "Pipeline: sending to LanguageTool");
+        var result = await _ltClient.CheckAsync(text, _cts.Token);
 
-        if (result != null)
-            _cache.Set(text, result);
-
+        if (result != null) _cache.Set(text, result);
         return result;
     }
 

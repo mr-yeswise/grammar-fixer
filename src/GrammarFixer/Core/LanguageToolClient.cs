@@ -1,139 +1,98 @@
 using System.Net.Http;
-using System.Text;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using GrammarFixer.Models;
 using GrammarFixer.Services;
 
 namespace GrammarFixer.Core;
 
 /// <summary>
-/// HTTP client for LanguageTool local server.
-/// Calls POST /v2/check with form data, applies all first-replacement suggestions.
+/// Calls the local LanguageTool HTTP server and applies all match replacements.
 /// </summary>
 public sealed class LanguageToolClient
 {
     private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(10) };
 
     /// <summary>
-    /// Sends text to LanguageTool, applies ALL first-replacement suggestions.
-    /// Returns corrected string with list of edits, or null on failure.
+    /// POST /v2/check, apply all first-choice replacements end-to-start.
+    /// Returns null on network/server failure.
     /// </summary>
-    public async Task<CorrectionResult?> CheckAsync(string text, string baseUrl, CancellationToken ct = default)
+    public async Task<CorrectionResult?> CheckAsync(string text, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(text))
-            return new CorrectionResult { Original = text, Corrected = text, Edits = [], FromCache = false };
-
         DiagnosticLogger.Log(DiagnosticLogLevel.Info, $"LT: checking {text.Length} chars");
-
         try
         {
             var content = new FormUrlEncodedContent(new Dictionary<string, string>
             {
-                ["language"] = "en-US",
-                ["text"] = text,
+                ["language"]    = "en-US",
+                ["text"]        = text,
                 ["enabledOnly"] = "false"
             });
 
-            var resp = await _http.PostAsync($"{baseUrl}/v2/check", content, ct);
+            var resp = await _http.PostAsync(
+                $"{LanguageToolService.BaseUrl}/v2/check", content, ct);
 
             if (!resp.IsSuccessStatusCode)
             {
-                DiagnosticLogger.Log(DiagnosticLogLevel.Warn, $"LT: HTTP {resp.StatusCode}");
+                DiagnosticLogger.Log(DiagnosticLogLevel.Warn, $"LT: HTTP {(int)resp.StatusCode}");
                 return null;
             }
 
             var json = await resp.Content.ReadAsStringAsync(ct);
-            using var doc = JsonDocument.Parse(json);
+            var doc  = JsonDocument.Parse(json);
+            var matches = doc.RootElement.GetProperty("matches");
 
-            if (!doc.RootElement.TryGetProperty("matches", out var matches) || matches.GetArrayLength() == 0)
+            if (matches.GetArrayLength() == 0)
             {
                 DiagnosticLogger.Log(DiagnosticLogLevel.Info, "LT: no issues found");
-                return new CorrectionResult { Original = text, Corrected = text, Edits = [], FromCache = false };
+                return new CorrectionResult { Original = text, Corrected = text, Edits = [] };
             }
 
-            // Collect matches with replacements, sort by offset DESC
-            var matchList = new List<MatchInfo>();
-            foreach (var m in matches.EnumerateArray())
-            {
-                var offset = m.GetProperty("offset").GetInt32();
-                var length = m.GetProperty("length").GetInt32();
-                var message = m.GetProperty("message").GetString() ?? "";
-                
-                string? replacement = null;
-                if (m.TryGetProperty("replacements", out var repls) && repls.GetArrayLength() > 0)
+            // Build match list, apply end-to-start so offsets stay valid
+            var matchList = matches.EnumerateArray()
+                .Select(m => new
                 {
-                    replacement = repls[0].GetProperty("value").GetString();
-                }
+                    Offset  = m.GetProperty("offset").GetInt32(),
+                    Length  = m.GetProperty("length").GetInt32(),
+                    Message = m.GetProperty("message").GetString() ?? string.Empty,
+                    Replace = m.GetProperty("replacements").EnumerateArray()
+                                .Select(r => r.GetProperty("value").GetString() ?? string.Empty)
+                                .FirstOrDefault() ?? string.Empty
+                })
+                .Where(m => m.Replace.Length > 0)
+                .OrderByDescending(m => m.Offset)
+                .ToList();
 
-                if (!string.IsNullOrEmpty(replacement))
-                {
-                    matchList.Add(new MatchInfo
-                    {
-                        Offset = offset,
-                        Length = length,
-                        Message = message,
-                        Replacement = replacement
-                    });
-                }
-            }
-
-            if (matchList.Count == 0)
-            {
-                DiagnosticLogger.Log(DiagnosticLogLevel.Info, "LT: no actionable replacements");
-                return new CorrectionResult { Original = text, Corrected = text, Edits = [], FromCache = false };
-            }
-
-            // Sort by offset descending so replacements don't shift indices
-            matchList.Sort((a, b) => b.Offset.CompareTo(a.Offset));
-
-            var sb = new StringBuilder(text);
+            var sb    = new System.Text.StringBuilder(text);
             var edits = new List<Edit>();
 
             foreach (var m in matchList)
             {
-                // Clamp length to string bounds
-                var len = Math.Min(m.Length, sb.Length - m.Offset);
-                if (len <= 0) continue;
-
-                var original = sb.ToString(m.Offset, len);
-                sb.Remove(m.Offset, len);
-                sb.Insert(m.Offset, m.Replacement);
-
-                edits.Add(new Edit
-                {
-                    Original = original,
-                    Replacement = m.Replacement,
-                    Message = m.Message,
-                    Offset = m.Offset,
-                    Length = len
-                });
+                var safeLen = Math.Min(m.Length, sb.Length - m.Offset);
+                if (safeLen <= 0) continue;
+                var original = text.Substring(m.Offset, Math.Min(m.Length, text.Length - m.Offset));
+                sb.Remove(m.Offset, safeLen);
+                sb.Insert(m.Offset, m.Replace);
+                edits.Add(new Edit { Original = original, Replacement = m.Replace, Message = m.Message });
             }
 
-            var corrected = sb.ToString();
-            DiagnosticLogger.Log(DiagnosticLogLevel.Info, $"LT: {edits.Count} fixes applied");
-
+            DiagnosticLogger.Log(DiagnosticLogLevel.Info, $"LT: {matchList.Count} fix(es) applied");
             return new CorrectionResult
             {
-                Original = text,
-                Corrected = corrected,
-                Edits = edits,
+                Original  = text,
+                Corrected = sb.ToString(),
+                Edits     = edits,
                 FromCache = false
             };
         }
-        catch (Exception ex)
+        catch (TaskCanceledException)
         {
-            DiagnosticLogger.Log(DiagnosticLogLevel.Error, $"LT client error: {ex.Message}");
+            DiagnosticLogger.Log(DiagnosticLogLevel.Warn, "LT: request timed out");
             return null;
         }
-    }
-
-    private sealed class MatchInfo
-    {
-        public int Offset { get; set; }
-        public int Length { get; set; }
-        public string Message { get; set; } = "";
-        public string Replacement { get; set; } = "";
+        catch (Exception ex)
+        {
+            DiagnosticLogger.Log(DiagnosticLogLevel.Error, $"LT: error: {ex.Message}");
+            return null;
+        }
     }
 }
