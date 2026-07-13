@@ -3,8 +3,8 @@ using System.Windows.Input;
 namespace GrammarFixer.Core;
 
 /// <summary>
-/// Watches keyboard hook KeyDown events and fires when the configured hotkey combo is detected.
-/// Tracks Ctrl, Alt, Shift modifier state correctly across key sequences.
+/// Watches keyboard hook events and fires HotkeyPressed when the configured combo is detected.
+/// Tracks modifier state via KeyUp so modifiers are never prematurely reset.
 /// </summary>
 public sealed class HotkeyManager : IDisposable
 {
@@ -33,7 +33,7 @@ public sealed class HotkeyManager : IDisposable
 
     private void ParseHotkey(string hotkey)
     {
-        var parts = hotkey.Split('+', StringSplitOptions.RemoveEmptyEntries);
+        var parts  = hotkey.Split('+', StringSplitOptions.RemoveEmptyEntries);
         _needCtrl  = parts.Any(p => p.Equals("Ctrl",  StringComparison.OrdinalIgnoreCase));
         _needAlt   = parts.Any(p => p.Equals("Alt",   StringComparison.OrdinalIgnoreCase));
         _needShift = parts.Any(p => p.Equals("Shift", StringComparison.OrdinalIgnoreCase));
@@ -42,12 +42,10 @@ public sealed class HotkeyManager : IDisposable
 
     private void OnKeyDown(Key key)
     {
-        // Track modifier state
         if (key is Key.LeftCtrl  or Key.RightCtrl)  { _ctrlDown  = true; return; }
         if (key is Key.LeftAlt   or Key.RightAlt)   { _altDown   = true; return; }
         if (key is Key.LeftShift or Key.RightShift) { _shiftDown = true; return; }
 
-        // Check trigger
         if (key == _triggerKey
             && (!_needCtrl  || _ctrlDown)
             && (!_needAlt   || _altDown)

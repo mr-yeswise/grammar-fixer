@@ -7,19 +7,15 @@ namespace GrammarFixer.Core;
 
 /// <summary>
 /// Low-level global keyboard hook (WH_KEYBOARD_LL).
-/// WH_KEYBOARD_LL and WH_MOUSE_LL are the only two hooks that work in managed code
-/// without a native DLL — the callback is marshalled by Windows itself.
-///
-/// GC pitfall: The HookProc delegate MUST be stored in a field (not a local variable)
-/// so the GC does not collect it while the hook is active. We use a static field here.
-///
-/// Reference impl: https://gist.github.com/dudikeleti/a0ce3044b683634793cf297addbf5f11
+/// Fires KeyDown on WM_KEYDOWN/WM_SYSKEYDOWN and KeyUp on WM_KEYUP/WM_SYSKEYUP.
 /// </summary>
 public sealed class KeyboardHook : IDisposable
 {
-    private const int WH_KEYBOARD_LL = 13;
-    private const int WM_KEYDOWN = 0x0100;
-    private const int WM_SYSKEYDOWN = 0x0104;
+    private const int WH_KEYBOARD_LL  = 13;
+    private const int WM_KEYDOWN      = 0x0100;
+    private const int WM_SYSKEYDOWN   = 0x0104;
+    private const int WM_KEYUP        = 0x0101;
+    private const int WM_SYSKEYUP     = 0x0105;
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
@@ -46,12 +42,12 @@ public sealed class KeyboardHook : IDisposable
         public IntPtr dwExtraInfo;
     }
 
-    // Stored as field to prevent GC collection
     private readonly LowLevelKeyboardProc _proc;
     private IntPtr _hookId = IntPtr.Zero;
     private bool _disposed;
 
     public event Action<Key>? KeyDown;
+    public event Action<Key>? KeyUp;
 
     public KeyboardHook()
     {
@@ -61,18 +57,18 @@ public sealed class KeyboardHook : IDisposable
     public void Install()
     {
         using var curProcess = Process.GetCurrentProcess();
-        using var curModule = curProcess.MainModule!;
+        using var curModule  = curProcess.MainModule!;
         _hookId = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, GetModuleHandle(curModule.ModuleName), 0);
         if (_hookId == IntPtr.Zero)
             throw new InvalidOperationException($"Failed to set keyboard hook. Error: {Marshal.GetLastWin32Error()}");
-        DiagnosticLogger.Log(DiagnosticLogLevel.Info, $"Hook installed/uninstalled, handle={_hookId}");
+        DiagnosticLogger.Log(DiagnosticLogLevel.Info, $"Hook installed, handle={_hookId}");
     }
 
     public void Uninstall()
     {
         if (_hookId != IntPtr.Zero)
         {
-            DiagnosticLogger.Log(DiagnosticLogLevel.Info, $"Hook installed/uninstalled, handle={_hookId}");
+            DiagnosticLogger.Log(DiagnosticLogLevel.Info, $"Hook uninstalled, handle={_hookId}");
             UnhookWindowsHookEx(_hookId);
             _hookId = IntPtr.Zero;
         }
@@ -80,11 +76,15 @@ public sealed class KeyboardHook : IDisposable
 
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
-        if (nCode >= 0 && (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN))
+        if (nCode >= 0)
         {
-            var kb = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
+            var kb  = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
             var key = KeyInterop.KeyFromVirtualKey((int)kb.vkCode);
-            KeyDown?.Invoke(key);
+
+            if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN)
+                KeyDown?.Invoke(key);
+            else if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP)
+                KeyUp?.Invoke(key);
         }
         return CallNextHookEx(_hookId, nCode, wParam, lParam);
     }
