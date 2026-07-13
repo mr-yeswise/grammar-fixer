@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Forms;
+using GrammarFixer.Services;
 
 namespace GrammarFixer.Core;
 
@@ -43,21 +44,35 @@ public static class UiaHelper
         {
             var focused = AutomationElement.FocusedElement;
             if (focused == null) return null;
+            var elementName = focused.Current.Name;
 
             if (focused.TryGetCurrentPattern(ValuePattern.Pattern, out var vp))
             {
                 var val = ((ValuePattern)vp).Current.Value;
-                if (!string.IsNullOrEmpty(val)) return val;
+                if (!string.IsNullOrEmpty(val))
+                {
+                    DiagnosticLogger.Log(DiagnosticLogLevel.Info,
+                        $"UIA: strategy=ValuePattern, element={elementName}, text length={val.Length}");
+                    return val;
+                }
             }
 
             if (focused.TryGetCurrentPattern(TextPattern.Pattern, out var tp))
             {
                 var txt = ((TextPattern)tp).DocumentRange.GetText(-1);
-                if (!string.IsNullOrEmpty(txt)) return txt;
+                if (!string.IsNullOrEmpty(txt))
+                {
+                    DiagnosticLogger.Log(DiagnosticLogLevel.Info,
+                        $"UIA: strategy=TextPattern, element={elementName}, text length={txt.Length}");
+                    return txt;
+                }
             }
 
             // Clipboard read fallback (Ctrl+A, Ctrl+C)
-            return ReadViaClipboard();
+            var clipboardText = ReadViaClipboard();
+            DiagnosticLogger.Log(DiagnosticLogLevel.Info,
+                $"UIA: strategy=Clipboard, element={elementName}, text length={clipboardText?.Length ?? 0}");
+            return clipboardText;
         }
         catch { return null; }
     }
@@ -68,7 +83,12 @@ public static class UiaHelper
         try
         {
             var focused = AutomationElement.FocusedElement;
-            if (focused == null) return SetViaClipboard(newText);
+            if (focused == null)
+            {
+                var ok = SetViaClipboard(newText);
+                DiagnosticLogger.Log(DiagnosticLogLevel.Info, $"UIA: set text via Clipboard, length={newText.Length}");
+                return ok;
+            }
 
             if (focused.TryGetCurrentPattern(ValuePattern.Pattern, out var vp))
             {
@@ -76,15 +96,20 @@ public static class UiaHelper
                 if (!vPattern.Current.IsReadOnly)
                 {
                     vPattern.SetValue(newText);
+                    DiagnosticLogger.Log(DiagnosticLogLevel.Info, $"UIA: set text via ValuePattern, length={newText.Length}");
                     return true;
                 }
             }
 
-            return SetViaClipboard(newText);
+            var setViaClipboard = SetViaClipboard(newText);
+            DiagnosticLogger.Log(DiagnosticLogLevel.Info, $"UIA: set text via Clipboard, length={newText.Length}");
+            return setViaClipboard;
         }
         catch
         {
-            return SetViaClipboard(newText);
+            var fallbackSet = SetViaClipboard(newText);
+            DiagnosticLogger.Log(DiagnosticLogLevel.Info, $"UIA: set text via Clipboard, length={newText.Length}");
+            return fallbackSet;
         }
     }
 

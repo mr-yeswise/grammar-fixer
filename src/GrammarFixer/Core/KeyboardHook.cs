@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows.Input;
+using GrammarFixer.Services;
 
 namespace GrammarFixer.Core;
 
@@ -64,12 +65,14 @@ public sealed class KeyboardHook : IDisposable
         _hookId = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, GetModuleHandle(curModule.ModuleName), 0);
         if (_hookId == IntPtr.Zero)
             throw new InvalidOperationException($"Failed to set keyboard hook. Error: {Marshal.GetLastWin32Error()}");
+        DiagnosticLogger.Log(DiagnosticLogLevel.Info, $"Hook installed/uninstalled, handle={_hookId}");
     }
 
     public void Uninstall()
     {
         if (_hookId != IntPtr.Zero)
         {
+            DiagnosticLogger.Log(DiagnosticLogLevel.Info, $"Hook installed/uninstalled, handle={_hookId}");
             UnhookWindowsHookEx(_hookId);
             _hookId = IntPtr.Zero;
         }

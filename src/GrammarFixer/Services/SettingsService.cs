@@ -25,13 +25,18 @@ public static class SettingsService
         try
         {
             var json = File.ReadAllText(SettingsPath);
-            return JsonSerializer.Deserialize<AppSettings>(json, JsonOpts) ?? new AppSettings();
+            var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOpts) ?? new AppSettings();
+            settings.AllowedApps ??= new List<string>();
+            settings.DeniedApps ??= new List<string> { "GrammarFixer", "devenv", "rider" };
+            return settings;
         }
         catch { return new AppSettings(); }
     }
 
     public static void Save(AppSettings settings)
     {
+        settings.AllowedApps ??= new List<string>();
+        settings.DeniedApps ??= new List<string>();
         Directory.CreateDirectory(SettingsDir);
         File.WriteAllText(SettingsPath, JsonSerializer.Serialize(settings, JsonOpts));
     }

@@ -1,4 +1,6 @@
 using System.Windows.Input;
+using System.Windows;
+using System.IO;
 using GrammarFixer.Models;
 using GrammarFixer.Services;
 using GrammarFixer.UI;
@@ -24,6 +26,7 @@ public sealed class AppController : IDisposable
     private OverlayWindow? _overlay;
     private FloatingButton? _floatingBtn;
     private bool _disposed;
+    private Action<bool>? _setProcessingState;
 
     private string? _lastCapturedText;
     private CorrectionResult? _lastResult;
@@ -52,6 +55,7 @@ public sealed class AppController : IDisposable
     {
         _hotkey.Start();
         _typingHook.Install();
+        DiagnosticLogger.Log(DiagnosticLogLevel.Info, "AppController started, hook installed");
 
         WpfApp.Current.Dispatcher.Invoke(() =>
         {
@@ -143,6 +147,8 @@ public sealed class AppController : IDisposable
     {
         if (!_settings.Enabled) return;
         if (_settings.HotkeyOnlyMode) return;
+        if (_settings.DebugMode)
+            DiagnosticLogger.Log(DiagnosticLogLevel.Debug, $"Key pressed: {key}");
 
         if (key == Key.LeftCtrl  || key == Key.RightCtrl  ||
             key == Key.LeftAlt   || key == Key.RightAlt   ||
@@ -157,33 +163,123 @@ public sealed class AppController : IDisposable
     {
         if (!_settings.Enabled) return;
 
+        _setProcessingState?.Invoke(true);
         string? processName = null;
         string? text        = null;
         WpfPoint caretPos   = default;
 
-        await WpfApp.Current.Dispatcher.InvokeAsync(() =>
+        try
         {
-            processName = UiaHelper.GetForegroundProcessName();
-            if (!IsAppAllowed(processName)) return;
-            text      = UiaHelper.GetFocusedText();
-            caretPos  = UiaHelper.GetCaretScreenPosition();
-        });
-
-        if (string.IsNullOrWhiteSpace(text)) return;
-        if (!IsAppAllowed(processName)) return;
-
-        _lastCapturedText = text;
-        _lastResult       = null;
-
-        var result = await _pipeline.CorrectNowAsync(text);
-        if (result != null && result.Corrected != result.Original)
-        {
-            _lastResult = result;
-            WpfApp.Current.Dispatcher.Invoke(() =>
+            await WpfApp.Current.Dispatcher.InvokeAsync(() =>
             {
-                _floatingBtn?.ShowAt(caretPos);
+                processName = UiaHelper.GetForegroundProcessName();
             });
+
+            DiagnosticLogger.Log(DiagnosticLogLevel.Info,
+                $"Typing paused. Reading UIA text from process: {processName ?? "unknown"}");
+
+            if (!IsAppAllowed(processName))
+            {
+                DiagnosticLogger.Log(DiagnosticLogLevel.Warn,
+                    $"Process '{processName ?? "unknown"}' is blocked — skipping");
+                return;
+            }
+
+            await WpfApp.Current.Dispatcher.InvokeAsync(() =>
+            {
+                text = UiaHelper.GetFocusedText();
+                caretPos = UiaHelper.GetCaretScreenPosition();
+            });
+
+            if (string.IsNullOrWhiteSpace(text))
+                return;
+
+            var preview = text.Substring(0, Math.Min(40, text.Length));
+            DiagnosticLogger.Log(DiagnosticLogLevel.Info, $"Captured {text.Length} chars: '{preview}...'");
+
+            _lastCapturedText = text;
+            _lastResult       = null;
+
+            var result = await _pipeline.CorrectNowAsync(text);
+            if (result != null && result.Corrected != result.Original)
+            {
+                _lastResult = result;
+                var originalPreview = result.Original.Substring(0, Math.Min(40, result.Original.Length));
+                var correctedPreview = result.Corrected.Substring(0, Math.Min(40, result.Corrected.Length));
+                DiagnosticLogger.Log(DiagnosticLogLevel.Info,
+                    $"Correction ready. Original: '{originalPreview}...' → Corrected: '{correctedPreview}...'. Showing pill.");
+
+                WpfApp.Current.Dispatcher.Invoke(() =>
+                {
+                    _floatingBtn?.ShowAt(caretPos);
+                });
+            }
+            else
+            {
+                DiagnosticLogger.Log(DiagnosticLogLevel.Info, "No correction needed for captured text");
+            }
         }
+        finally
+        {
+            _setProcessingState?.Invoke(false);
+        }
+    }
+
+    public void AttachTrayIcon(TrayIconManager trayIconManager)
+    {
+        _setProcessingState = trayIconManager.SetProcessingState;
+    }
+
+    public void RunSelfTest()
+    {
+        const string sample = "i recieve the freind definately";
+        var failures = new List<string>();
+
+        try
+        {
+            var engine = new StaticCorrectionEngine();
+            var typosPath = Path.Combine(AppContext.BaseDirectory, "Data", "typos_en.json");
+            engine.LoadDictionary(typosPath);
+            var corrected = engine.Correct(sample).Corrected;
+
+            var checks = new[]
+            {
+                ("receive", corrected.Contains("receive", StringComparison.OrdinalIgnoreCase)),
+                ("friend", corrected.Contains("friend", StringComparison.OrdinalIgnoreCase)),
+                ("definitely", corrected.Contains("definitely", StringComparison.OrdinalIgnoreCase))
+            };
+
+            foreach (var check in checks)
+            {
+                if (check.Item2)
+                    DiagnosticLogger.Log(DiagnosticLogLevel.Info, $"Self-test PASS: contains '{check.Item1}'");
+                else
+                {
+                    failures.Add(check.Item1);
+                    DiagnosticLogger.Log(DiagnosticLogLevel.Error, $"Self-test FAIL: missing '{check.Item1}'");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            failures.Add(ex.Message);
+            DiagnosticLogger.Log(DiagnosticLogLevel.Error, $"Self-test exception: {ex.Message}");
+        }
+
+        WpfApp.Current.Dispatcher.Invoke(() =>
+        {
+            if (failures.Count == 0)
+            {
+                WpfMessageBox.Show("Self-test: 3/3 passed ✓", "GrammarFixer Self-Test",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                var details = string.Join(Environment.NewLine, failures.Select(x => $"- {x}"));
+                WpfMessageBox.Show($"Self-test failed:{Environment.NewLine}{details}", "GrammarFixer Self-Test",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        });
     }
 
     private void OnCorrectionReady(CorrectionResult result)
@@ -221,13 +317,40 @@ public sealed class AppController : IDisposable
 
     private bool IsAppAllowed(string? processName)
     {
-        if (processName == null) return false;
-        if (_settings.DeniedApps.Any(d =>
-            processName.Contains(d, StringComparison.OrdinalIgnoreCase)))
+        if (string.IsNullOrWhiteSpace(processName))
+        {
+            DiagnosticLogger.Log(DiagnosticLogLevel.Warn, "Process check failed: no process name");
             return false;
-        if (_settings.AllowedApps.Count == 0) return true;
-        return _settings.AllowedApps.Any(a =>
+        }
+
+        var deniedMatch = _settings.DeniedApps.FirstOrDefault(d =>
+            processName.Contains(d, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrEmpty(deniedMatch))
+        {
+            DiagnosticLogger.Log(DiagnosticLogLevel.Info,
+                $"Process '{processName}' blocked by DeniedApps match '{deniedMatch}'");
+            return false;
+        }
+
+        if (_settings.AllowedApps.Count == 0)
+        {
+            DiagnosticLogger.Log(DiagnosticLogLevel.Debug,
+                $"Process '{processName}' allowed (AllowedApps empty, no DeniedApps match)");
+            return true;
+        }
+
+        var allowedMatch = _settings.AllowedApps.FirstOrDefault(a =>
             processName.Contains(a, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrEmpty(allowedMatch))
+        {
+            DiagnosticLogger.Log(DiagnosticLogLevel.Debug,
+                $"Process '{processName}' allowed by AllowedApps match '{allowedMatch}'");
+            return true;
+        }
+
+        DiagnosticLogger.Log(DiagnosticLogLevel.Info,
+            $"Process '{processName}' blocked (no AllowedApps match)");
+        return false;
     }
 
     public void Dispose()

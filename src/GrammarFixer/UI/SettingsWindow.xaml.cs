@@ -1,5 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Diagnostics;
+using System.IO;
 using GrammarFixer.Core;
 using GrammarFixer.Models;
 using GrammarFixer.Services;
@@ -28,6 +30,7 @@ public partial class SettingsWindow : Window
         HotkeyBox.Text              = s.HotkeyTrigger;
         DebounceBox.Text            = s.DebounceMs.ToString();
         AllowedAppsBox.Text         = string.Join(Environment.NewLine, s.AllowedApps);
+        DeniedAppsBox.Text          = string.Join(Environment.NewLine, s.DeniedApps);
         AutostartCheck.IsChecked    = AutostartHelper.IsAutostartEnabled();
 
         foreach (ComboBoxItem item in ModelCombo.Items)
@@ -46,6 +49,9 @@ public partial class SettingsWindow : Window
         s.AllowedApps    = AllowedAppsBox.Text
             .Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries)
             .Select(x => x.Trim()).Where(x => x.Length > 0).ToList();
+        s.DeniedApps     = DeniedAppsBox.Text
+            .Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries)
+            .Select(x => x.Trim()).Where(x => x.Length > 0).ToList();
         s.GroqModel      = (ModelCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString()
                            ?? "llama-3.1-8b-instant";
 
@@ -56,6 +62,23 @@ public partial class SettingsWindow : Window
 
         _controller.UpdateSettings(s);
         Close();
+    }
+
+    private void OpenLogs_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Directory.CreateDirectory(DiagnosticLogger.LogDirectoryPath);
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = DiagnosticLogger.LogDirectoryPath,
+                UseShellExecute = true
+            });
+        }
+        catch
+        {
+            // ignore
+        }
     }
 
     private void SaveApiKey_Click(object sender, RoutedEventArgs e)

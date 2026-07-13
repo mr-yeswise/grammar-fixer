@@ -4,6 +4,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 
 using GrammarFixer.Core;
+using GrammarFixer.Services;
 
 namespace GrammarFixer.UI;
 
@@ -45,6 +46,7 @@ public partial class FloatingButton : Window
         if (Left       < wa.Left)   Left = wa.Left   + 4;
         if (Top  + 40  > wa.Bottom) Top  = screenPos.Y - 38;
         if (Top        < wa.Top)    Top  = wa.Top    + 4;
+        DiagnosticLogger.Log(DiagnosticLogLevel.Info, $"FloatingButton: showing at ({Left:0},{Top:0})");
 
         Opacity = 0;
         if (!IsVisible) Show();

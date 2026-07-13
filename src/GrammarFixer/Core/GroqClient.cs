@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using GrammarFixer.Models;
+using GrammarFixer.Services;
 
 namespace GrammarFixer.Core;
 
@@ -37,6 +38,8 @@ public sealed class GroqClient
 
     public async Task<CorrectionResult?> CorrectAsync(string input, CancellationToken ct = default)
     {
+        DiagnosticLogger.Log(DiagnosticLogLevel.Info, $"Groq: sending request, model={_model}");
+        var started = DateTime.UtcNow;
         var systemPrompt =
             "You are a grammar and spelling correction assistant. " +
             "Return ONLY valid JSON with this exact schema: " +
@@ -77,11 +80,15 @@ public sealed class GroqClient
                 new Edit(e.Original ?? "", e.Replacement ?? "", e.Reason ?? "", e.Offset, e.Length)
             ).ToList() ?? new List<Edit>();
 
+            var elapsedMs = (long)(DateTime.UtcNow - started).TotalMilliseconds;
+            DiagnosticLogger.Log(DiagnosticLogLevel.Info, $"Groq: response received in {elapsedMs}ms");
             return new CorrectionResult(input, result.Corrected ?? input, edits);
         }
-        catch (OperationCanceledException) { return null; }
-        catch (HttpRequestException) { return null; }
-        catch (JsonException) { return null; }
+        catch (Exception ex) when (ex is OperationCanceledException or HttpRequestException or JsonException)
+        {
+            DiagnosticLogger.Log(DiagnosticLogLevel.Error, $"Groq: error {ex.Message}");
+            return null;
+        }
     }
 
     // --- Response model types ---
