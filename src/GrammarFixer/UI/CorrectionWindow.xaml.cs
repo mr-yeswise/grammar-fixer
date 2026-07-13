@@ -40,7 +40,7 @@ public partial class CorrectionWindow : Window
         _debounce.Start();
     }
 
-    private async void InputBox_KeyDown(object sender, KeyEventArgs e)
+    private async void InputBox_KeyDown(object sender, WpfKeyEventArgs e)
     {
         if (e.Key == Key.Enter && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
         {

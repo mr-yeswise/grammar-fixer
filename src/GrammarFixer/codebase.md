@@ -1,6 +1,6 @@
-# GrammarFixer Codebase Dictionary
+# GrammarFixer — Codebase Navigation Reference
 
-> Generated: 2026-07-13 | Purpose: Navigation reference for the codebase
+> Last updated: 2026-07-13 | Engine: LanguageTool (local Java server) | Build: net8.0-windows win-x64
 
 ---
 
@@ -8,300 +8,267 @@
 
 ```
 src/GrammarFixer/
-├── GrammarFixer.csproj          # Project config (WPF, net8.0-windows, single-file publish)
-├── App.xaml / App.xaml.cs       # WPF app entry, AppController lifecycle
-├── GlobalUsings.cs              # Implicit usings
-├── codebase.md                  # THIS FILE
+├── GrammarFixer.csproj           # WPF project (net8.0-windows, single-file publish, win-x64)
+├── App.xaml / App.xaml.cs        # WPF entry: boots LT service, AppController, TrayIconManager
+├── GlobalUsings.cs               # ALL WPF/WinForms alias resolutions (see Alias Table below)
+├── codebase.md                   # THIS FILE
 ├── Core/
-│   ├── AppController.cs         # Central orchestrator (hooks, UI, pipeline)
-│   ├── CorrectionPipeline.cs    # Debounce, cache, routes to engines
-│   ├── StaticCorrectionEngine.cs # Offline regex + typo dict (typos_en.json)
-│   ├── GroqClient.cs            # Groq API (llama-3.1-8b-instant)
-│   ├── HotkeyManager.cs         # Global hotkey (Ctrl+Alt+G)
-│   ├── KeyboardHook.cs          # Low-level typing hook
-│   ├── LruCache.cs              # Simple LRU cache (50 entries)
-│   ├── UiaHelper.cs             # UI Automation text capture/set
-│   └── [NEW] LanguageToolClient.cs   # HTTP client for local LT server
-│   └── [NEW] LanguageToolService.cs  # Manages Java child process
+│   ├── AppController.cs          # Central orchestrator: hook→debounce→UIA→pipeline→UI
+│   ├── CorrectionPipeline.cs     # LRU cache (50) + routes to LanguageToolClient
+│   ├── HotkeyManager.cs          # Global hotkey listener (default Ctrl+Alt+G)
+│   ├── KeyboardHook.cs           # Low-level WH_KEYBOARD_LL hook; fires KeyDown only
+│   ├── UiaHelper.cs              # UI Automation: GetFocusedText / SetFocusedText / GetCaretPos
+│   ├── LanguageToolClient.cs     # HTTP POST /v2/check → CorrectionResult
+│   └── LanguageToolService.cs    # Manages java -jar languagetool-server.jar child process
 ├── Models/
-│   ├── AppSettings.cs           # User config (mode, hotkey, debounce, Groq model)
-│   ├── CorrectionResult.cs      # Original + Corrected + Edits[] + FromCache
-│   └── Edit.cs                  # Original + Replacement + Reason + Offset + Length
+│   ├── AppSettings.cs            # User config (Enabled, UxMode, hotkeys, debounce, app lists)
+│   ├── CorrectionResult.cs       # record: Original, Corrected, Edits[], FromCache
+│   ├── Edit.cs                   # record: Original, Replacement, Reason, Offset, Length
+│   ├── UxMode.cs                 # enum: OneClickRewrite | ReviewSuggestions
+│   └── DiffLineViewModel.cs      # class + DiffType enum for CorrectionWindow diff view
 ├── Services/
-│   ├── SettingsService.cs       # Load/Save settings.json (%APPDATA%\GrammarFixer)
-│   ├── DiagnosticLogger.cs      # Daily log files (%LOCALAPPDATA%\GrammarFixer\logs)
-│   ├── CredentialService.cs     # Groq API key (Windows Credential Manager)
-│   └── AutostartHelper.cs       # Windows startup registration
+│   ├── SettingsService.cs        # Load/Save → %APPDATA%\GrammarFixer\settings.json
+│   ├── DiagnosticLogger.cs       # Daily logs → %LOCALAPPDATA%\GrammarFixer\logs\
+│   └── AutostartHelper.cs        # Windows Run key registration
 ├── UI/
-│   ├── OverlayWindow.xaml/.cs   # Suggestion review overlay
-│   ├── FloatingButton.xaml/.cs  # Pill near caret
-│   ├── SettingsWindow.xaml/.cs  # Settings UI
-│   └── TrayIconManager.cs       # System tray icon + context menu
-└── Data/
-    └── typos_en.json            # 118 common misspellings (Wikipedia list)
+│   ├── CorrectionWindow.xaml/.cs # Floating paste-and-correct window with inline diff
+│   ├── OverlayWindow.xaml/.cs    # Borderless overlay for ReviewSuggestions mode
+│   ├── FloatingButton.xaml/.cs   # Pill button near caret
+│   ├── SettingsWindow.xaml/.cs   # Config UI (hotkeys, UxMode, debounce, allowed/denied apps)
+│   ├── TrayIconManager.cs        # System tray: icon, context menu, ShowBalloonTip
+│   ├── DiffColorConverter.cs     # IValueConverter: DiffType → SolidColorBrush (for CorrectionWindow)
+│   └── Styles.xaml               # Shared WPF styles
+├── Assets/
+│   ├── tray_enabled.ico
+│   ├── tray_disabled.ico
+│   └── tray_processing.ico
+└── tools/
+    ├── languagetool-server.jar   # LanguageTool standalone server (~200 MB, not in git)
+    ├── Start-LanguageTool.bat    # Manual launch helper
+    └── INSTALL.md                # Setup guide (Java 11+ required)
 ```
 
 ---
 
-## Key Types & Records
+## GlobalUsings Alias Table
+
+> All ambiguity aliases live in `GlobalUsings.cs`. **Never add bare `Application`, `Clipboard`, `KeyEventArgs`, etc. — always use the alias.**
+
+| Alias | Resolves to |
+|---|---|
+| `WpfApp` | `System.Windows.Application` |
+| `WpfPoint` | `System.Windows.Point` |
+| `WpfColor` | `System.Windows.Media.Color` |
+| `WpfColors` | `System.Windows.Media.Colors` |
+| `WpfMessageBox` | `System.Windows.MessageBox` |
+| `WpfMouseArgs` | `System.Windows.Input.MouseEventArgs` |
+| `WpfClipboard` | `System.Windows.Clipboard` |
+| `WpfKeyEventArgs` | `System.Windows.Input.KeyEventArgs` |
+| `FormsKeys` | `System.Windows.Forms.Keys` |
+| `FormsSendKeys` | `System.Windows.Forms.SendKeys` |
+| `FormsCursor` | `System.Windows.Forms.Cursor` |
+| `FormsTimer` | `System.Windows.Forms.Timer` |
+
+---
+
+## Key Types
 
 ### CorrectionResult (Models/CorrectionResult.cs)
 ```csharp
 record CorrectionResult(
-    string Original,           // Input text
-    string Corrected,          // Output text
-    List<Edit> Edits,          // Applied changes
-    bool FromCache = false     // Cache hit flag
+    string Original,
+    string Corrected,
+    List<Edit> Edits,
+    bool FromCache = false
 );
 ```
 
 ### Edit (Models/Edit.cs)
 ```csharp
 record Edit(
-    string Original,           // Matched text
-    string Replacement,        // Suggested fix
-    string Reason,             // Human-readable reason
-    int Offset,                // Start index in Original
-    int Length                 // Length of match
+    string Original,
+    string Replacement,
+    string Reason,
+    int Offset,
+    int Length
 );
 ```
 
 ### AppSettings (Models/AppSettings.cs)
 ```csharp
 class AppSettings {
-    bool Enabled = true;
-    bool DebugMode = false;
-    CorrectionMode Mode = CorrectionMode.Static;  // Static | AI
-    UxMode UxMode = UxMode.OneClickRewrite;       // OneClickRewrite | ReviewSuggestions
-    string HotkeyTrigger = "Ctrl+Alt+G";
-    int DebounceMs = 400;
-    bool HotkeyOnlyMode = false;
-    List<string> AllowedApps = [];
-    List<string> DeniedApps = ["GrammarFixer", "devenv", "rider"];
-    string GroqModel = "llama-3.1-8b-instant";
-    string GroqFallbackModel = "llama-3.3-70b-versatile";
+    bool   Enabled                = true;
+    bool   HotkeyOnlyMode         = false;
+    bool   DebugMode              = false;
+    int    DebounceMs             = 400;
+    string HotkeyTrigger          = "Ctrl+Alt+G";
+    string CorrectionWindowHotkey = "Ctrl+Alt+Shift+G";
+    double CorrectionWindowLeft   = -1;
+    double CorrectionWindowTop    = -1;
+    UxMode UxMode                 = UxMode.OneClickRewrite;
+    List<string> DeniedApps  = ["GrammarFixer", "devenv", "rider", "code"];
+    List<string> AllowedApps = [];  // empty = allow all except denied
 }
-enum CorrectionMode { Static, AI }
-enum UxMode { OneClickRewrite, ReviewSuggestions }
+```
+
+### DiffLineViewModel + DiffType (Models/DiffLineViewModel.cs)
+```csharp
+enum DiffType { None, Insert, Delete, Modify }
+class DiffLineViewModel { string Text; DiffType Type; }
 ```
 
 ---
 
-## Core Flow (AppController → Pipeline)
+## Core Flow
 
-1. **KeyboardHook** fires on every keypress → `OnTypingKeyDown`
-2. **Typing debounce** (400ms default) → `OnTypingPaused`
-3. **UIA capture** → `UiaHelper.GetFocusedText()` + caret position
-4. **CorrectionPipeline.Queue(text)** or `CorrectNowAsync(text)`
-5. **Pipeline.RunCorrectionForAsync**:
-   - Check LRU cache (50 entries)
-   - If `Mode == Static` or no Groq key → `StaticCorrectionEngine.Correct()`
-   - If `Mode == AI` and Groq available → `GroqClient.CorrectAsync()`
-   - Fallback to Static on Groq failure
-   - Cache result
-   - Fire `CorrectionReady` event
-6. **AppController.OnCorrectionReady** → show `FloatingButton` at caret
-7. **User clicks pill** → `TriggerFromFloatingButton` → `UiaHelper.SetFocusedText(corrected)` (OneClick) or show `OverlayWindow` (Review)
+```
+KeyboardHook.KeyDown
+  └─► AppController.OnTypingKeyDown
+        └─► _typingDebounce (400ms)
+              └─► OnTypingPaused()
+                    ├─► UiaHelper.GetForegroundProcessName()  [allowed-list check]
+                    ├─► UiaHelper.GetFocusedText()
+                    ├─► CorrectionPipeline.CorrectNowAsync(text)
+                    │     ├─► LruCache check (50 entries)
+                    │     └─► LanguageToolClient.CheckAsync(text)
+                    │           └─► POST http://localhost:8081/v2/check
+                    └─► FloatingButton.ShowAt(caretPos)   [if correction found]
 
----
+FloatingButton click
+  └─► AppController.TriggerFromFloatingButton()
+        ├─► UxMode.OneClickRewrite → UiaHelper.SetFocusedText(corrected)
+        └─► UxMode.ReviewSuggestions → OverlayWindow.Show()
 
-## Existing Engines (TO BE REPLACED)
+Ctrl+Alt+G (HotkeyManager)
+  └─► AppController.OnHotkeyPressed()
+        └─► pipeline.CorrectNowAsync() → UiaHelper.SetFocusedText()
 
-### StaticCorrectionEngine (Core/StaticCorrectionEngine.cs)
-- Loads `Data/typos_en.json` (118 entries)
-- Regex rules: double spaces, repeated words, lone "i", capitalization after period, contractions, typo dict
-- Returns `CorrectionResult` with `List<Edit>`
-- **No external deps** — pure C# regex
-
-### GroqClient (Core/GroqClient.cs)
-- HTTP POST to `https://api.groq.com/openai/v1/chat/completions`
-- Model: `llama-3.1-8b-instant` (default) or fallback
-- JSON mode response schema: `{ corrected: string, edits: [{ original, replacement, reason, offset, length }] }`
-- 8s timeout, 0.1 temperature
-- Returns `CorrectionResult` or null on error
-
----
-
-## Services
-
-### DiagnosticLogger (Services/DiagnosticLogger.cs)
-- `Log(level, message)` → daily file `%LOCALAPPDATA%\GrammarFixer\logs\grammerfixer_yyyy-MM-dd.log`
-- Levels: Debug, Info, Warn, Error
-- Auto-cleans files older than 7 days
-- Never throws
-
-### SettingsService (Services/SettingsService.cs)
-- `Load()` / `Save(AppSettings)` → `%APPDATA%\GrammarFixer\settings.json`
-- JsonStringEnumConverter for enums
-
-### CredentialService (Services/CredentialService.cs)
-- Stores Groq API key in Windows Credential Manager (AdysTech.CredentialManager)
-- `LoadApiKey()` / `SaveApiKey(string)`
-
-### AutostartHelper (Services/AutostartHelper.cs)
-- Registers/unregisters app in Windows startup (Run key)
+Ctrl+Alt+Shift+G
+  └─► AppController.ToggleCorrectionWindow()  [open/close CorrectionWindow]
+```
 
 ---
 
 ## UI Components
 
-| Component | Purpose | Key Methods |
-|-----------|---------|-------------|
-| `FloatingButton` | Pill near caret | `ShowAt(WpfPoint)`, `Click` → `AppController.TriggerFromFloatingButton()` |
-| `OverlayWindow` | Review suggestions | `Show()`, `Apply` → `AppController.ApplyCorrection()`, `Dismiss` → `DismissOverlay()` |
-| `SettingsWindow` | Config UI | Binds to `AppSettings`, saves via `SettingsService` |
-| `TrayIconManager` | System tray | `Initialize()`, `SetProcessingState(bool)`, context menu (Settings, Self-test, Enabled, Exit) |
+| Component | File | Key Public API |
+|---|---|---|
+| `FloatingButton` | `UI/FloatingButton.xaml.cs` | `ShowAt(WpfPoint)`, `Hide()` |
+| `OverlayWindow` | `UI/OverlayWindow.xaml.cs` | `ctor(result, caretPos, controller)` → Accept calls `ApplyCorrection()`, Dismiss calls `DismissOverlay()` |
+| `CorrectionWindow` | `UI/CorrectionWindow.xaml.cs` | `ctor(ltClient, controller)` → auto-corrects on type, Ctrl+Enter sends to field |
+| `SettingsWindow` | `UI/SettingsWindow.xaml.cs` | Binds all `AppSettings` fields; Save calls `UpdateSettings()` |
+| `TrayIconManager` | `UI/TrayIconManager.cs` | `Initialize()`, `SetProcessingState(bool)`, `ShowBalloonTip(title, msg, icon)` |
+| `DiffColorConverter` | `UI/DiffColorConverter.cs` | `IValueConverter`: `DiffType` → `SolidColorBrush` |
+
+---
+
+## AppController Public API
+
+```csharp
+void Start()                                    // install hooks, create FloatingButton
+void Stop()                                     // uninstall hooks, close all windows
+void UpdateSettings(AppSettings s)              // propagate settings changes
+void OpenSettings()                             // show SettingsWindow
+void ToggleCorrectionWindow()                   // open or close CorrectionWindow
+void TriggerFromFloatingButton()                // pill click handler
+void ApplyCorrection(CorrectionResult result)   // OverlayWindow accept
+void DismissOverlay()                           // OverlayWindow dismiss
+void ApplyCorrectionFromWindow(string text)     // CorrectionWindow send-to-field
+void AttachTrayIcon(TrayIconManager t)          // wire up processing state callbacks
+void RunSelfTest()                              // correction smoke test with messagebox result
+```
+
+---
+
+## LanguageTool Integration
+
+**Server:** `java -jar tools/languagetool-server.jar --port 8081 --allow-origin "*"`
+- Managed by `LanguageToolService` (auto-start on app launch, auto-kill on exit)
+- Health check: `GET /v2/languages` — polled every 500ms, 15s timeout
+
+**Client:** `LanguageToolClient.CheckAsync(string text, CancellationToken ct = default)`
+- `POST http://localhost:8081/v2/check`
+- Body: `language=en-US&text=<input>`
+- Applies matches sorted by offset descending → returns `CorrectionResult`
+- Returns `null` on any failure (pipeline degrades gracefully)
 
 ---
 
 ## Build & Publish
 
 ```bash
-# Debug build
+# Debug (fast iteration)
 dotnet build src/GrammarFixer/GrammarFixer.csproj -c Debug
 
-# Release single-file publish
-dotnet publish src/GrammarFixer/GrammarFixer.csproj -c Release -r win-x64 -p:PublishSingleFile=true --self-contained true
+# Release — single-file self-contained
+dotnet publish src/GrammarFixer/GrammarFixer.csproj -c Release -r win-x64 \
+  -p:PublishSingleFile=true --self-contained true
 # Output: src/GrammarFixer/bin/Release/net8.0-windows/win-x64/publish/GrammarFixer.exe
 ```
 
-**Dependencies (NuGet):**
-- `Hardcodet.NotifyIcon.Wpf` — system tray
-- `AdysTech.CredentialManager` — Windows Credential Manager
-- `DiffPlex` — diff for overlay (unused in current pipeline?)
-- `Microsoft.Extensions.Http` — HttpClient factory (not used directly)
-- `System.Text.Json` — built-in for .NET 8
+**NuGet dependencies:**
+- `Hardcodet.NotifyIcon.Wpf` — system tray (`TaskbarIcon`)
+- `DiffPlex` — inline diff in `OverlayWindow` and `CorrectionWindow`
+- `System.Text.Json` — built-in (.NET 8)
 
-**Content copied to output:**
-- `Data/typos_en.json` (PreserveNewest)
+**Assets (CopyToOutputDirectory=PreserveNewest):**
 - `Assets/tray_enabled.ico`, `tray_disabled.ico`, `tray_processing.ico`
-
----
-
-## LanguageTool Integration Plan (from plan.md)
-
-### New Files to Add
-
-| File | Purpose |
-|------|---------|
-| `Core/LanguageToolService.cs` | Manages `java -jar languagetool-server.jar --port 8081 --allow-origin "*"` process |
-| `Core/LanguageToolClient.cs` | HTTP client calling `http://localhost:8081/v2/check` with `language=en-US` |
-| `tools/languagetool-server.jar` | LanguageTool standalone server (English only, ~200MB) |
-| `tools/Start-LanguageTool.bat` | Manual launch script |
-| `tools/INSTALL.md` | User setup instructions (Java 11+, download LT) |
-
-### Files to Modify
-
-| File | Changes |
-|------|---------|
-| `CorrectionPipeline.cs` | Remove `StaticCorrectionEngine` + `GroqClient`; inject `LanguageToolClient`; keep LRU cache (50) |
-| `App.xaml.cs` | Create `LanguageToolService`; `await StartAsync()` in `OnStartup`; `Dispose()` in `OnExit`; tray balloon if not ready |
-| `Models/CorrectionResult.cs` | Already has `Edits` list — no change needed |
-| `Models/Edit.cs` | Ensure `Message` field exists (currently `Reason`) — rename or add alias |
-
-### Data to Remove
-- `Core/StaticCorrectionEngine.cs` (delete)
-- `Core/GroqClient.cs` (delete)
-- `AppSettings.GroqModel`, `GroqFallbackModel` (optional — keep for future?)
-
-### LanguageTool API Contract
-
-**POST** `http://localhost:8081/v2/check`
-```
-Content-Type: application/x-www-form-urlencoded
-language=en-US&text=<input>&enabledOnly=false
-```
-
-**Response:**
-```json
-{
-  "matches": [
-    {
-      "offset": 0,
-      "length": 5,
-      "message": "Possible typo",
-      "replacements": [{ "value": "fixed" }]
-    }
-  ]
-}
-```
-
-**Client logic:** Sort matches by offset descending, apply first replacement each, rebuild string via `StringBuilder`.
-
----
-
-## Verification Checklist (before implementing)
-
-- [ ] Java 11+ installed on target machine
-- [ ] `languagetool-server.jar` downloaded and placed at `tools/languagetool-server.jar`
-- [ ] Port 8081 free (no conflicts)
-- [ ] `dotnet build` succeeds with 0 errors
-- [ ] App starts, LT server launches, `/v2/languages` responds within 15s
-- [ ] Correction works end-to-end (type → pill → click → text replaced)
-- [ ] Cache still works (repeat same text → FromCache=true)
-- [ ] Tray shows warning if LT not ready
-- [ ] Self-test still passes (update to use LT)
+- `tools/languagetool-server.jar` *(not in git — user must download)*
 
 ---
 
 ## Key Paths & Constants
 
-| Item | Path / Value |
-|------|--------------|
+| Item | Value |
+|---|---|
 | Repo root | `C:\Users\fadi4\Desktop\grammar-fixer` |
 | Project dir | `src/GrammarFixer` |
-| App data | `%APPDATA%\GrammarFixer\settings.json` |
-| Logs | `%LOCALAPPDATA%\GrammarFixer\logs\` |
-| LT JAR (planned) | `tools/languagetool-server.jar` (relative to `AppContext.BaseDirectory`) |
-| LT Port | 8081 |
-| LT Base URL | `http://localhost:8081` |
-| LT Health check | `GET /v2/languages` |
-| LT Check endpoint | `POST /v2/check` |
-| Debounce default | 400ms |
-| Cache size | 50 entries |
-| Hotkey default | Ctrl+Alt+G |
+| Settings file | `%APPDATA%\GrammarFixer\settings.json` |
+| Logs dir | `%LOCALAPPDATA%\GrammarFixer\logs\` |
+| LT JAR path | `tools/languagetool-server.jar` (relative to `AppContext.BaseDirectory`) |
+| LT port | `8081` |
+| LT base URL | `http://localhost:8081` |
+| LT health | `GET /v2/languages` |
+| LT check | `POST /v2/check` |
+| Debounce default | `400ms` |
+| LRU cache size | `50 entries` |
+| Hotkey default | `Ctrl+Alt+G` |
+| CW hotkey default | `Ctrl+Alt+Shift+G` |
 
 ---
 
-## Notes for Implementer
-
-1. **Single-file publish** means `AppContext.BaseDirectory` is the temp extraction folder — `tools/languagetool-server.jar` must be copied there by the publish process (add as `Content` with `CopyToOutputDirectory=PreserveNewest`)
-
-2. **Process lifetime**: `LanguageToolService` must kill the Java process tree on `Dispose` (app exit). Use `Process.Kill(entireProcessTree: true)` (.NET 7+)
-
-3. **Health check polling**: 500ms interval, 15s max. Log each attempt at Debug level.
-
-4. **Error handling**: LT client returns `null` on any failure → pipeline should surface gracefully (no crash). Consider falling back to a minimal static engine for "no Java" scenarios.
-
-5. **English only**: `language=en-US` hardcoded. No multi-language support needed per requirements.
-
-6. **Model removal**: `StaticCorrectionEngine` and `GroqClient` can be deleted entirely. `CorrectionMode.AI` enum value becomes unused — either remove or repurpose for "LanguageTool".
-
-7. **AppSettings cleanup**: Remove `GroqModel`, `GroqFallbackModel` unless keeping for future cloud fallback.
-
-8. **DiffPlex**: Currently unused in pipeline — may be used by OverlayWindow for showing diffs. Keep package.
-
----
-
-## Quick Reference: Find by Feature
+## Quick Find by Feature
 
 | Feature | File(s) |
-|---------|---------|
+|---|---|
 | App startup/shutdown | `App.xaml.cs` |
 | Global hotkey | `Core/HotkeyManager.cs` |
-| Typing hook + debounce | `Core/AppController.cs` (OnTypingKeyDown, OnTypingPaused) |
-| Text capture (UIA) | `Core/UiaHelper.cs` |
-| Correction routing | `Core/CorrectionPipeline.cs` |
-| Static rules | `Core/StaticCorrectionEngine.cs` |
-| Groq API | `Core/GroqClient.cs` |
-| NEW: LanguageTool server | `Core/LanguageToolService.cs` (planned) |
-| NEW: LanguageTool client | `Core/LanguageToolClient.cs` (planned) |
-| Cache | `Core/LruCache.cs` |
+| Raw keyboard hook | `Core/KeyboardHook.cs` |
+| Typing debounce | `Core/AppController.cs` → `OnTypingKeyDown`, `OnTypingPaused` |
+| Text capture/apply (UIA) | `Core/UiaHelper.cs` |
+| Correction routing + cache | `Core/CorrectionPipeline.cs` |
+| LanguageTool HTTP client | `Core/LanguageToolClient.cs` |
+| LanguageTool process mgmt | `Core/LanguageToolService.cs` |
 | Settings persistence | `Services/SettingsService.cs` |
 | Logging | `Services/DiagnosticLogger.cs` |
-| Credentials | `Services/CredentialService.cs` |
-| Tray icon | `UI/TrayIconManager.cs` |
+| Windows autostart | `Services/AutostartHelper.cs` |
+| Tray icon + menu | `UI/TrayIconManager.cs` |
 | Floating pill | `UI/FloatingButton.xaml.cs` |
 | Review overlay | `UI/OverlayWindow.xaml.cs` |
+| Paste-correct window | `UI/CorrectionWindow.xaml.cs` |
 | Settings UI | `UI/SettingsWindow.xaml.cs` |
-| Typo dictionary | `Data/typos_en.json` |
+| Diff colour binding | `UI/DiffColorConverter.cs` |
+| WPF/Forms ambiguity aliases | `GlobalUsings.cs` |
+| Shared styles | `UI/Styles.xaml` |
+
+---
+
+## Removed / Deprecated
+
+| Item | Reason |
+|---|---|
+| `Core/StaticCorrectionEngine.cs` | Replaced by LanguageTool |
+| `Core/GroqClient.cs` | Replaced by LanguageTool |
+| `AppSettings.GroqModel` / `GroqFallbackModel` | Removed with Groq engine |
+| `AppSettings.Mode` / `CorrectionMode` enum | Replaced by single LT engine; UxMode still active |
+| `Data/typos_en.json` | Was used by StaticCorrectionEngine |
